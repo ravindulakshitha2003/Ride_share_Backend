@@ -16,7 +16,6 @@ function createToken(user) {
   );
 }
 
-// Never return passwordHash in API responses
 function publicUser(user) {
   return {
     id: user._id.toString(),
@@ -24,6 +23,11 @@ function publicUser(user) {
     mobile: user.mobile,
     email: user.email,
     role: user.role,
+    gender: user.gender ?? null,
+    dateOfBirth: user.dateOfBirth
+      ? user.dateOfBirth.toISOString().slice(0, 10)
+      : null,
+    profilePhotoUrl: user.profilePhotoUrl ?? null,
   };
 }
 
@@ -35,18 +39,26 @@ function normalizeMobile(mobile) {
 
 export async function register(req, res, next) {
   try {
-    const { name, mobile, email, password, role } = req.body ?? {};
+    const {
+      name,
+      mobile,
+      email,
+      password,
+      role,
+      gender,
+      dateOfBirth,
+      profilePhotoUrl,
+    } = req.body ?? {};
 
-    // Validate field types first
+    // Required fields
     if (
       typeof name !== "string" ||
       typeof mobile !== "string" ||
       typeof email !== "string" ||
-      typeof password !== "string" ||
-      typeof role !== "string"
+      typeof password !== "string"
     ) {
       return res.status(400).json({
-        message: "All fields are required and must have valid types",
+        message: "Name, mobile, email and password are required",
       });
     }
 
@@ -54,35 +66,129 @@ export async function register(req, res, next) {
     const trimmedMobile = mobile.trim();
     const normalizedEmail = email.trim().toLowerCase();
 
-    // Accept 0771234567 or +94771234567
+    // Validate role
+    if (!["passenger", "driver"].includes(role)) {
+      return res.status(400).json({
+        message: "Role must be passenger or driver",
+      });
+    }
+
+    // Validate name
+    if (!trimmedName || trimmedName.length > 100) {
+      return res.status(400).json({
+        message: "Name must contain 1-100 characters",
+      });
+    }
+
+    // Validate Sri Lankan mobile number
     const mobileRegex = /^(?:0\d{9}|\+94\d{9})$/;
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
     if (!mobileRegex.test(trimmedMobile)) {
       return res.status(400).json({
-        message:
-          "Enter a valid Sri Lankan mobile number, e.g. 0771234567 or +94771234567",
+        message: "Enter a valid Sri Lankan mobile number",
       });
     }
+
+    // Validate email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
     if (
-      !trimmedName ||
-      trimmedName.length > 100 ||
       !emailRegex.test(normalizedEmail) ||
-      normalizedEmail.length > 254 ||
-      password.length < 8 ||
-      !["driver", "passenger"].includes(role)
+      normalizedEmail.length > 254
     ) {
       return res.status(400).json({
-        message:
-          "Invalid input. Check the name, email, password (minimum 8 characters), and role.",
+        message: "Enter a valid email address",
       });
     }
 
-    // Store both accepted mobile formats in the same format
+    // Validate password
+    if (password.length < 8) {
+      return res.status(400).json({
+        message: "Password must contain at least 8 characters",
+      });
+    }
+
+    // Validate optional gender
+    const allowedGenders = [
+      "male",
+      "female",
+      "prefer_not_to_say",
+    ];
+
+    if (
+      gender !== undefined &&
+      !allowedGenders.includes(gender)
+    ) {
+      return res.status(400).json({
+        message: "Invalid gender value",
+      });
+    }
+
+    // Validate optional date of birth
+    let parsedDateOfBirth;
+
+    if (dateOfBirth !== undefined && dateOfBirth !== "") {
+      if (typeof dateOfBirth !== "string") {
+        return res.status(400).json({
+          message: "Date of birth must be a valid date",
+        });
+      }
+
+      const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+
+      if (!dateRegex.test(dateOfBirth)) {
+        return res.status(400).json({
+          message: "Date of birth must use YYYY-MM-DD format",
+        });
+      }
+
+      parsedDateOfBirth = new Date(
+        `${dateOfBirth}T00:00:00.000Z`
+      );
+
+      if (
+        Number.isNaN(parsedDateOfBirth.getTime()) ||
+        parsedDateOfBirth.toISOString().slice(0, 10) !== dateOfBirth ||
+        parsedDateOfBirth > new Date()
+      ) {
+        return res.status(400).json({
+          message: "Enter a valid date of birth",
+        });
+      }
+    }
+
+    // Validate optional profile photo URL
+    let photoUrl = null;
+
+    if (
+      profilePhotoUrl !== undefined &&
+      profilePhotoUrl !== null &&
+      profilePhotoUrl !== ""
+    ) {
+      if (typeof profilePhotoUrl !== "string") {
+        return res.status(400).json({
+          message: "Profile photo must be a URL",
+        });
+      }
+
+      try {
+        const parsedUrl = new URL(profilePhotoUrl.trim());
+
+        if (!["http:", "https:"].includes(parsedUrl.protocol)) {
+          throw new Error("Invalid protocol");
+        }
+
+        photoUrl = parsedUrl.toString();
+      } catch {
+        return res.status(400).json({
+          message: "Enter a valid profile photo URL",
+        });
+      }
+    }
+
     const normalizedMobile = normalizeMobile(trimmedMobile);
 
-    // Check email and mobile uniqueness
+    // Check for existing email or mobile
     const existingUser = await User.findOne({
       $or: [
         { email: normalizedEmail },
@@ -96,14 +202,21 @@ export async function register(req, res, next) {
       });
     }
 
-    const passwordHash = await bcrypt.hash(password, 12);  //Hashes passwords with bcrypt.
+    // Hash password
+    const passwordHash = await bcrypt.hash(password, 12);
 
+    // Create passenger or driver
     const user = await User.create({
       name: trimmedName,
       mobile: normalizedMobile,
       email: normalizedEmail,
       passwordHash,
       role,
+      ...(gender !== undefined ? { gender } : {}),
+      ...(parsedDateOfBirth
+        ? { dateOfBirth: parsedDateOfBirth }
+        : {}),
+      profilePhotoUrl: photoUrl,
     });
 
     return res.status(201).json({
@@ -112,7 +225,6 @@ export async function register(req, res, next) {
       token: createToken(user),
     });
   } catch (error) {
-    // Handle duplicate-key race conditions
     if (error.code === 11000) {
       return res.status(409).json({
         message: "Email or mobile number already registered",

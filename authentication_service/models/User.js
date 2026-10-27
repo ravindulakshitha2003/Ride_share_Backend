@@ -36,6 +36,29 @@ const userSchema = new mongoose.Schema(
       enum: ["driver", "passenger"],
       required: true,
     },
+
+    gender: {
+      type: String,
+      enum: ["male", "female", "prefer_not_to_say"],
+      required: false,
+    },
+
+    dateOfBirth: {
+      type: Date,
+      required: false,
+      validate: {
+        validator(value) {
+          return !value || value <= new Date();
+        },
+        message: "Date of birth cannot be in the future",
+      },
+    },
+
+    profilePhotoUrl: {
+      type: String,
+      default: null,
+      trim: true,
+    },
   },
   {
     timestamps: true,

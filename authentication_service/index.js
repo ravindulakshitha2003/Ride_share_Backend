@@ -4,6 +4,7 @@ import cors from "cors";
 import mongoose from "mongoose";
 
 import authRoute from "./routes/authRoute.js";
+import vehicleRoutes from "./routes/vehicleRoute.js";
 import { getMe } from "./controllers/authController.js";
 import { verifyToken } from "./middleware/authMiddleware.js";
 
@@ -23,10 +24,13 @@ app.get("/health", (req, res) => {
 });
 
 // Authentication routes
-app.use("/auth", authRoute);
+app.use("/api/auth", authRoute);
 
 // Authenticated user profile
 app.get("/me", verifyToken, getMe);
+
+//vehicle route
+app.use("/api/vehicles", vehicleRoutes);
 
 // Central error handler
 app.use((err, req, res, next) => {

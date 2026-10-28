@@ -1,8 +1,8 @@
-
 import mongoose from "mongoose";
 
 const vehicleSchema = new mongoose.Schema(
   {
+    // Link the vehicle to the registered driver/user
     driver: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -10,15 +10,16 @@ const vehicleSchema = new mongoose.Schema(
       index: true,
     },
 
-    registrationNumber: {
+    // Vehicle information
+    vehicleType: {
       type: String,
+      enum: ["car", "van", "suv", "other"],
       required: true,
-      unique: true,
+      lowercase: true,
       trim: true,
-      uppercase: true,
     },
 
-    make: {
+    brand: {
       type: String,
       required: true,
       trim: true,
@@ -43,19 +44,52 @@ const vehicleSchema = new mongoose.Schema(
       trim: true,
     },
 
-    vehicleType: {
-      type: String,
-      enum: ["car", "van", "motorcycle", "three_wheeler"],
-      required: true,
-    },
 
-    seats: {
+
+    passengerSeats: {
       type: Number,
       required: true,
       min: 1,
       max: 100,
     },
 
+    airConditioning: {
+      type: Boolean,
+      default: false,
+    },
+
+    luggageSpace: {
+      type: String,
+      enum: ["available", "limited", "unavailable"],
+      required: true,
+      lowercase: true,
+    },
+
+    vehicleDescription: {
+      type: String,
+      trim: true,
+      maxlength: 1000,
+      default: "",
+    },
+
+    crNumber: {
+      type: String,
+      required: true,
+      trim: true,
+      unique: true,
+    },
+
+    revenueLicenceExpiry: {
+      type: Date,
+      required: true,
+    },
+
+    insuranceExpiry: {
+      type: Date,
+      required: true,
+    },
+
+    // Uploaded vehicle photo
     vehiclePhotoUrl: {
       type: String,
       required: true,
@@ -68,9 +102,7 @@ const vehicleSchema = new mongoose.Schema(
       select: false,
     },
   },
-  {
-    timestamps: true,
-  }
+  { timestamps: true }
 );
 
 vehicleSchema.index({ driver: 1, createdAt: -1 });

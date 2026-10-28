@@ -40,9 +40,6 @@ app.use("/api/drivers", driverRoutes);
 // Central error handler
 app.use((err, req, res, next) => {
 
-    console.error("ERROR NAME:", err.name);
-  console.error("ERROR MESSAGE:", err.message);
-  console.error("ERROR DETAILS:", err);
 
   if (err instanceof multer.MulterError) {
     if (err.code === "LIMIT_FILE_SIZE") {

@@ -6,6 +6,7 @@ import multer from "multer";
 
 import authRoute from "./routes/authRoute.js";
 import vehicleRoutes from "./routes/vehicleRoute.js";
+import driverRoutes from "./routes/driverRoute.js";
 import { getMe } from "./controllers/authController.js";
 import { verifyToken } from "./middleware/authMiddleware.js";
 
@@ -33,8 +34,16 @@ app.get("/me", verifyToken, getMe);
 // Vehicle routes
 app.use("/api/vehicles", vehicleRoutes);
 
+//driver routes
+app.use("/api/drivers", driverRoutes);
+
 // Central error handler
 app.use((err, req, res, next) => {
+
+    console.error("ERROR NAME:", err.name);
+  console.error("ERROR MESSAGE:", err.message);
+  console.error("ERROR DETAILS:", err);
+
   if (err instanceof multer.MulterError) {
     if (err.code === "LIMIT_FILE_SIZE") {
       return res.status(400).json({

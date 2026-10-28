@@ -1,3 +1,4 @@
+
 import mongoose from "mongoose";
 
 const vehicleSchema = new mongoose.Schema(
@@ -53,6 +54,18 @@ const vehicleSchema = new mongoose.Schema(
       required: true,
       min: 1,
       max: 100,
+    },
+
+    vehiclePhotoUrl: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+
+    vehiclePhotoPublicId: {
+      type: String,
+      required: true,
+      select: false,
     },
   },
   {

@@ -1,6 +1,7 @@
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import User from "../models/User.js";
+import cloudinary from "../cloudinary.js";
 
 function createToken(user) {
   return jwt.sign(
@@ -36,8 +37,32 @@ function normalizeMobile(mobile) {
     ? `+94${mobile.slice(1)}`
     : mobile;
 }
+ //handle photoUploading
+function uploadPhoto(buffer) {
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      {
+        folder: "share-ride/profile-photos",
+        allowed_formats: ["jpg", "jpeg", "png", "webp"],
+        transformation: [
+          { width: 800, height: 800, crop: "limit" },
+        ],
+      },
+      (error, result) => {
+        if (error) return reject(error);
+        resolve(result);
+      }
+    );
+
+    stream.end(buffer);
+  });
+}
+
+
 
 export async function register(req, res, next) {
+  let uploadedPhoto;
+
   try {
     const {
       name,
@@ -47,18 +72,26 @@ export async function register(req, res, next) {
       role,
       gender,
       dateOfBirth,
-      profilePhotoUrl,
     } = req.body ?? {};
 
-    // Required fields
+    // Validate required text fields
     if (
       typeof name !== "string" ||
       typeof mobile !== "string" ||
       typeof email !== "string" ||
-      typeof password !== "string"
+      typeof password !== "string" ||
+      typeof role !== "string"
     ) {
       return res.status(400).json({
-        message: "Name, mobile, email and password are required",
+        message:
+          "Name, mobile, email, password and role are required",
+      });
+    }
+
+    // Profile photo is required
+    if (!req.file) {
+      return res.status(400).json({
+        message: "Profile photo is required",
       });
     }
 
@@ -81,6 +114,7 @@ export async function register(req, res, next) {
     }
 
     // Validate Sri Lankan mobile number
+    // Accepts 0771234567 or +94771234567
     const mobileRegex = /^(?:0\d{9}|\+94\d{9})$/;
 
     if (!mobileRegex.test(trimmedMobile)) {
@@ -128,15 +162,10 @@ export async function register(req, res, next) {
     let parsedDateOfBirth;
 
     if (dateOfBirth !== undefined && dateOfBirth !== "") {
-      if (typeof dateOfBirth !== "string") {
-        return res.status(400).json({
-          message: "Date of birth must be a valid date",
-        });
-      }
-
-      const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-
-      if (!dateRegex.test(dateOfBirth)) {
+      if (
+        typeof dateOfBirth !== "string" ||
+        !/^\d{4}-\d{2}-\d{2}$/.test(dateOfBirth)
+      ) {
         return res.status(400).json({
           message: "Date of birth must use YYYY-MM-DD format",
         });
@@ -148,7 +177,8 @@ export async function register(req, res, next) {
 
       if (
         Number.isNaN(parsedDateOfBirth.getTime()) ||
-        parsedDateOfBirth.toISOString().slice(0, 10) !== dateOfBirth ||
+        parsedDateOfBirth.toISOString().slice(0, 10) !==
+          dateOfBirth ||
         parsedDateOfBirth > new Date()
       ) {
         return res.status(400).json({
@@ -157,38 +187,9 @@ export async function register(req, res, next) {
       }
     }
 
-    // Validate optional profile photo URL
-    let photoUrl = null;
-
-    if (
-      profilePhotoUrl !== undefined &&
-      profilePhotoUrl !== null &&
-      profilePhotoUrl !== ""
-    ) {
-      if (typeof profilePhotoUrl !== "string") {
-        return res.status(400).json({
-          message: "Profile photo must be a URL",
-        });
-      }
-
-      try {
-        const parsedUrl = new URL(profilePhotoUrl.trim());
-
-        if (!["http:", "https:"].includes(parsedUrl.protocol)) {
-          throw new Error("Invalid protocol");
-        }
-
-        photoUrl = parsedUrl.toString();
-      } catch {
-        return res.status(400).json({
-          message: "Enter a valid profile photo URL",
-        });
-      }
-    }
-
     const normalizedMobile = normalizeMobile(trimmedMobile);
 
-    // Check for existing email or mobile
+    // Check for duplicate email or mobile
     const existingUser = await User.findOne({
       $or: [
         { email: normalizedEmail },
@@ -202,10 +203,13 @@ export async function register(req, res, next) {
       });
     }
 
+    // Upload profile photo to Cloudinary
+    uploadedPhoto = await uploadPhoto(req.file.buffer);
+
     // Hash password
     const passwordHash = await bcrypt.hash(password, 12);
 
-    // Create passenger or driver
+    // Create passenger or driver account
     const user = await User.create({
       name: trimmedName,
       mobile: normalizedMobile,
@@ -216,7 +220,8 @@ export async function register(req, res, next) {
       ...(parsedDateOfBirth
         ? { dateOfBirth: parsedDateOfBirth }
         : {}),
-      profilePhotoUrl: photoUrl,
+      profilePhotoUrl: uploadedPhoto.secure_url,
+      profilePhotoPublicId: uploadedPhoto.public_id,
     });
 
     return res.status(201).json({
@@ -225,6 +230,20 @@ export async function register(req, res, next) {
       token: createToken(user),
     });
   } catch (error) {
+    // Remove uploaded photo if account creation fails
+    if (uploadedPhoto?.public_id) {
+      try {
+        await cloudinary.uploader.destroy(
+          uploadedPhoto.public_id
+        );
+      } catch (cleanupError) {
+        console.error(
+          "Profile photo cleanup failed:",
+          cleanupError.message
+        );
+      }
+    }
+
     if (error.code === 11000) {
       return res.status(409).json({
         message: "Email or mobile number already registered",

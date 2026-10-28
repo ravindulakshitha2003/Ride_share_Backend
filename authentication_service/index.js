@@ -1,7 +1,8 @@
-import "dotenv/config"; //loads environment variables
+import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import mongoose from "mongoose";
+import multer from "multer";
 
 import authRoute from "./routes/authRoute.js";
 import vehicleRoutes from "./routes/vehicleRoute.js";
@@ -29,12 +30,31 @@ app.use("/api/auth", authRoute);
 // Authenticated user profile
 app.get("/me", verifyToken, getMe);
 
-//vehicle route
+// Vehicle routes
 app.use("/api/vehicles", vehicleRoutes);
 
 // Central error handler
 app.use((err, req, res, next) => {
-  console.error(err.message);
+  if (err instanceof multer.MulterError) {
+    if (err.code === "LIMIT_FILE_SIZE") {
+      return res.status(400).json({
+        message: "Profile photo must be 5 MB or smaller",
+      });
+    }
+
+    return res.status(400).json({
+      message: "Invalid photo upload",
+    });
+  }
+
+  if (
+    err.message ===
+    "Only JPEG, PNG, and WebP images are allowed"
+  ) {
+    return res.status(400).json({
+      message: err.message,
+    });
+  }
 
   if (err.type === "entity.parse.failed") {
     return res.status(400).json({
@@ -42,28 +62,39 @@ app.use((err, req, res, next) => {
     });
   }
 
-  if (err.name === "ValidationError" || err.name === "CastError") {
+  if (
+    err.name === "ValidationError" ||
+    err.name === "CastError"
+  ) {
     return res.status(400).json({
       message: "Invalid input",
     });
   }
+
+  console.error(err);
 
   return res.status(500).json({
     message: "Internal server error",
   });
 });
 
-// Connect to MongoDB and start the service
+// Connect to MongoDB and start service
 const PORT = process.env.PORT || 4001;
 
 async function startServer() {
   try {
-    if (!process.env.MONGO_URI) {  //reads the MongoDB connection string from  .env file.
-      throw new Error("MONGO_URI is missing from .env");
-    }
+    const requiredEnv = [
+      "MONGO_URI",
+      "JWT_SECRET",
+      "CLOUDINARY_CLOUD_NAME",
+      "CLOUDINARY_API_KEY",
+      "CLOUDINARY_API_SECRET",
+    ];
 
-    if (!process.env.JWT_SECRET) {
-      throw new Error("JWT_SECRET is missing from .env");
+    for (const key of requiredEnv) {
+      if (!process.env[key]) {
+        throw new Error(`${key} is missing from .env`);
+      }
     }
 
     await mongoose.connect(process.env.MONGO_URI);
@@ -73,7 +104,10 @@ async function startServer() {
       console.log(`Identity service running on port ${PORT}`);
     });
   } catch (error) {
-    console.error("Identity service startup failed:", error.message);
+    console.error(
+      "Identity service startup failed:",
+      error.message
+    );
     process.exit(1);
   }
 }

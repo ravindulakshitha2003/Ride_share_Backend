@@ -34,18 +34,17 @@ const userSchema = new mongoose.Schema(
     role: {
       type: String,
       enum: ["driver", "passenger"],
+      default: "passenger",
       required: true,
     },
 
     gender: {
       type: String,
       enum: ["male", "female", "prefer_not_to_say"],
-      required: false,
     },
 
     dateOfBirth: {
       type: Date,
-      required: false,
       validate: {
         validator(value) {
           return !value || value <= new Date();
@@ -56,8 +55,14 @@ const userSchema = new mongoose.Schema(
 
     profilePhotoUrl: {
       type: String,
-      default: null,
+      required: true,
       trim: true,
+    },
+
+    profilePhotoPublicId: {
+      type: String,
+      required: true,
+      select: false,
     },
   },
   {

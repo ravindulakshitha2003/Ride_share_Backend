@@ -1,5 +1,10 @@
 
+import mongoose from "mongoose";
+import bcrypt from "bcrypt";
+import User from "../models/User.js";
 import Driver from "../models/Driver.js";
+import Vehicle from "../models/Vehicle.js";
+import cloudinary from "../cloudinary.js";
 
 const driverFields = [
  
@@ -87,6 +92,111 @@ export async function createDriverProfile(req, res, next) {
   }
 }
 
+//to delete driver details
+export async function convertDriverToPassenger(req, res, next) {
+  const session = await mongoose.startSession();
+
+  try {
+    const { password } = req.body;
+
+    if (!password) {
+      return res.status(400).json({
+        message: "Password is required to convert your account",
+      });
+    }
+
+    // Find the logged-in user
+    const user = await User.findById(req.user.id).select("+passwordHash");
+
+    if (!user) {
+      return res.status(404).json({
+        message: "User account not found",
+      });
+    }
+
+    if (user.role !== "driver") {
+      return res.status(403).json({
+        message: "Only drivers can convert their accounts",
+      });
+    }
+
+    // Verify the user's password
+    const passwordMatch = await bcrypt.compare(
+      password,
+      user.passwordHash
+    );
+
+    if (!passwordMatch) {
+      return res.status(401).json({
+        message: "Incorrect password",
+      });
+    }
+
+    let vehiclePhotoPublicIds = [];
+
+    await session.withTransaction(async () => {
+      const driver = await Driver.findOne({
+        driverId: user._id,
+      }).session(session);
+
+      if (!driver) {
+        throw new Error("Driver profile not found");
+      }
+
+      // Find vehicles belonging to this driver
+      const vehicles = await Vehicle.find({
+        driver: driver._id,
+      })
+        .select("+vehiclePhotoPublicId")
+        .session(session);
+
+      vehiclePhotoPublicIds = vehicles
+        .map((vehicle) => vehicle.vehiclePhotoPublicId)
+        .filter(Boolean);
+
+      // Delete associated vehicles
+      await Vehicle.deleteMany({
+        driver: driver._id,
+      }).session(session);
+
+      // Delete driver profile
+      await Driver.deleteOne({
+        _id: driver._id,
+      }).session(session);
+
+      // Keep the User account but change its role
+      user.role = "passenger";
+      await user.save({ session });
+    });
+
+    // Delete vehicle photos from Cloudinary after the DB transaction succeeds
+    for (const publicId of vehiclePhotoPublicIds) {
+      try {
+        await cloudinary.uploader.destroy(publicId);
+      } catch (cloudinaryError) {
+        console.error(
+          "Failed to delete vehicle photo from Cloudinary:",
+          cloudinaryError.message
+        );
+      }
+    }
+
+    return res.status(200).json({
+      message: "Driver profile removed and account converted to passenger successfully",
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+      },
+    });
+  } catch (error) {
+    next(error);
+  } finally {
+    await session.endSession();
+  }
+}
+
 export async function getMyDriverProfile(req, res, next) {
   try {
     const driver = await Driver.findOne({
@@ -104,6 +214,8 @@ export async function getMyDriverProfile(req, res, next) {
     next(error);
   }
 }
+
+
 
 export async function updateMyDriverProfile(req, res, next) {
   try {

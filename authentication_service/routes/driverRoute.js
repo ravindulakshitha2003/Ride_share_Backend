@@ -1,8 +1,10 @@
 
 import express from "express";
 
+
 import {
   createDriverProfile,
+  convertDriverToPassenger,
   getMyDriverProfile,
   updateMyDriverProfile,
 } from "../controllers/driverController.js";
@@ -20,5 +22,6 @@ router.use(allowRoles("driver"));
 router.post("/", createDriverProfile);
 router.get("/me", getMyDriverProfile);
 router.patch("/me", updateMyDriverProfile);
+router.delete("/convert-to-passenger", convertDriverToPassenger);
 
 export default router;

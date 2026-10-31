@@ -4,6 +4,8 @@ import express from "express";
 import {
   register,
   login,
+  getMe,
+  deleteMyAccount,
 } from "../controllers/authController.js";
 
 import {
@@ -12,6 +14,11 @@ import {
 
 import upload from "../middleware/uploadMiddleware.js";
 import registrationUpload from "../middleware/registrationUpload.js";
+
+import {
+  verifyToken,
+  allowRoles,
+} from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
@@ -33,6 +40,21 @@ router.post(
     { name: "vehiclePhoto", maxCount: 1 },
   ]),
   registerDriverWithVehicle
+);
+
+// View own profile (passengers)
+router.get(
+  "/me",
+  verifyToken,
+  getMe
+);
+
+//delete user
+router.delete(
+  "/me",
+  verifyToken,
+  allowRoles("passenger"),
+  deleteMyAccount
 );
 
 export default router;

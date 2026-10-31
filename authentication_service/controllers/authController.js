@@ -308,3 +308,67 @@ export async function getMe(req, res, next) {
     next(error);
   }
 }
+
+export async function deleteMyAccount(req, res, next) {
+  try {
+    // Find the authenticated passenger.
+    const user = await User.findById(req.user.id)
+      .select("+passwordHash +profilePhotoPublicId");
+
+    if (!user) {
+      return res.status(404).json({
+        message: "User not found",
+      });
+    }
+
+    // This first implementation is for normal passenger accounts only.
+    if (user.role !== "passenger") {
+      return res.status(403).json({
+        message: "This endpoint is currently available for passenger accounts only",
+      });
+    }
+
+    // Require password confirmation before deleting the account.
+    const { password } = req.body ?? {};
+
+    if (typeof password !== "string" || !password) {
+      return res.status(400).json({
+        message: "Password is required to delete your account",
+      });
+    }
+
+    const passwordMatches = await bcrypt.compare(
+      password,
+      user.passwordHash
+    );
+
+    if (!passwordMatches) {
+      return res.status(401).json({
+        message: "Incorrect password",
+      });
+    }
+
+    const profilePhotoPublicId = user.profilePhotoPublicId;
+
+    // Delete the user account.
+    await user.deleteOne();
+
+    // Delete the profile photo from Cloudinary.
+    if (profilePhotoPublicId) {
+      try {
+        await cloudinary.uploader.destroy(profilePhotoPublicId);
+      } catch (cloudinaryError) {
+        console.error(
+          "Profile photo deletion failed:",
+          cloudinaryError.message
+        );
+      }
+    }
+
+    return res.status(200).json({
+      message: "Your account has been deleted successfully",
+    });
+  } catch (error) {
+    next(error);
+  }
+}

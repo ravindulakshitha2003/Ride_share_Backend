@@ -16,6 +16,17 @@ module.exports = (schema, source = 'body') => (req, res, next) => {
     }));
     return next(new AppError('Validation failed', 400, details));
   }
-  req[source] = result.data;
+
+  if (source === 'query') {
+    // Express 5: req.query is read-only, so define our own value on the request
+    Object.defineProperty(req, 'query', {
+      value: result.data,
+      writable: true,
+      configurable: true,
+      enumerable: true,
+    });
+  } else {
+    req[source] = result.data;
+  }
   next();
 };

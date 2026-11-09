@@ -13,6 +13,5 @@ const controller = require('./rides.controller');
 router.post('/', auth, validate(schemas.createRide), controller.publish);
 router.get('/', validate(schemas.searchRides, 'query'), controller.search);
 router.get('/mine', auth, controller.mine);
-router.get('/match', validate(schemas.matchRides, 'query'), controller.match);
 
 module.exports = router;

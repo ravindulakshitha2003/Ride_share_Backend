@@ -21,7 +21,8 @@ const createRide = z.object({
   price: z.number().min(0),
   distanceKm: z.number().positive().optional(),
   durationMin: z.number().int().positive().optional(),
-  routeGeometry: z.array(z.array(z.number())).optional(),
+  routeGeometry: z.array(z.tuple([z.number().min(-90).max(90), z.number().min(-180).max(180)]))
+    .min(2, 'Route needs at least 2 points'),
 });
 
 const searchRides = z.object({
@@ -30,15 +31,5 @@ const searchRides = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD'),
 });
 
-const matchRides = z.object({
-  pickupLat: z.coerce.number().min(-90).max(90),
-  pickupLng: z.coerce.number().min(-180).max(180),
-  dropoffLat: z.coerce.number().min(-90).max(90),
-  dropoffLng: z.coerce.number().min(-180).max(180),
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD'),
-  radius: z.coerce.number().min(100).max(5000).default(1000),
-});
 
-module.exports = { createRide, searchRides, matchRides };
-
-module.exports = { createRide, searchRides, matchRides };
+module.exports = { createRide, searchRides, };

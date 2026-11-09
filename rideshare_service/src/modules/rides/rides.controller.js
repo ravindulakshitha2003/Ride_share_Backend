@@ -19,7 +19,3 @@ exports.search = asyncHandler(async (req, res) => {
 exports.mine = asyncHandler(async (req, res) => {
   res.json(await service.getMyRides(req.user.id));
 });
-
-exports.match = asyncHandler(async (req, res) => {
-  res.json(await service.matchRides(req.query));
-});

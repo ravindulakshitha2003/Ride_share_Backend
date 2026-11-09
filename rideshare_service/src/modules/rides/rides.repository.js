@@ -58,34 +58,3 @@ exports.findByDriver = async (driverId) => {
   return rows;
 };
 
-exports.match = async ({ pickup, dropoff, from, to, radius, minGap, limit }) => {
-  const { rows } = await pool.query(
-    `WITH q AS (
-       SELECT ST_SetSRID(ST_MakePoint($1,$2),4326) AS p,
-              ST_SetSRID(ST_MakePoint($3,$4),4326) AS d
-     )
-     SELECT r.id, r.driver_id, r.origin_name, r.dest_name, r.departure_at,
-            r.available_seats, r.price_per_seat,
-            ROUND(ST_Distance(r.route_line::geography, q.p::geography)::numeric) AS pickup_m,
-            ROUND(ST_Distance(r.route_line::geography, q.d::geography)::numeric) AS dropoff_m,
-            ST_LineLocatePoint(r.route_line, q.p) AS pickup_pos,
-            ST_LineLocatePoint(r.route_line, q.d) AS dropoff_pos,
-            ST_Y(ST_ClosestPoint(r.route_line, q.p)) AS pickup_point_lat,
-            ST_X(ST_ClosestPoint(r.route_line, q.p)) AS pickup_point_lng,
-            ST_Y(ST_ClosestPoint(r.route_line, q.d)) AS dropoff_point_lat,
-            ST_X(ST_ClosestPoint(r.route_line, q.d)) AS dropoff_point_lng
-     FROM rides r, q
-     WHERE r.status = 'OPEN' AND r.available_seats > 0
-       AND r.departure_at >= $5 AND r.departure_at < $6
-       AND ST_DWithin(r.route_line::geography, q.p::geography, $7)
-       AND ST_DWithin(r.route_line::geography, q.d::geography, $7)
-       AND ST_LineLocatePoint(r.route_line, q.p)
-           < ST_LineLocatePoint(r.route_line, q.d) - $8
-     ORDER BY ST_Distance(r.route_line::geography, q.p::geography)
-            + ST_Distance(r.route_line::geography, q.d::geography)
-     LIMIT $9`,
-    [pickup.lng, pickup.lat, dropoff.lng, dropoff.lat,
-     from, to, radius, minGap, limit]
-  );
-  return rows;
-};

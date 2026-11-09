@@ -25,15 +25,3 @@ exports.searchRides = ({ from, to, date }) => {
 
 exports.getMyRides = (driverId) => repo.findByDriver(driverId);
 
-exports.matchRides = (q) => {
-  const from = new Date(`${q.date}T00:00:00${SL_OFFSET}`);
-  const to = new Date(from.getTime() + 24 * 60 * 60 * 1000);
-  return repo.match({
-    pickup: { lat: q.pickupLat, lng: q.pickupLng },
-    dropoff: { lat: q.dropoffLat, lng: q.dropoffLng },
-    from, to,
-    radius: q.radius,
-    minGap: 0.02,   // minimum gap on the 0-1 ruler
-    limit: 10,
-  });
-};

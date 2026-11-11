@@ -6,7 +6,6 @@ import {
   createDriverProfile,
   convertDriverToPassenger,
   getMyDriverProfile,
-  updateMyDriverProfile,
 } from "../controllers/driverController.js";
 
 import {
@@ -21,7 +20,6 @@ router.use(allowRoles("driver"));
 
 router.post("/", createDriverProfile);
 router.get("/me", getMyDriverProfile);
-router.patch("/me", updateMyDriverProfile);
 router.delete("/convert-to-passenger", convertDriverToPassenger);
 
 export default router;

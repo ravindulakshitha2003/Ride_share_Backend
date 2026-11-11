@@ -4,7 +4,6 @@ import express from "express";
 import {
   registerVehicle,
   getMyVehicles,
-  updateMyVehicle,
   deleteMyVehicle,
 } from "../controllers/vehicleController.js";
 
@@ -30,12 +29,7 @@ router.post(
 // Get all vehicles belonging to the logged-in driver.
 router.get("/me", getMyVehicles);
 
-//update vehicle
-router.put(
-  "/:id",
-  upload.single("vehiclePhoto"),
-  updateMyVehicle
-);
+
 
 // Delete a vehicle belonging to the logged-in driver.
 router.delete("/:id", deleteMyVehicle);

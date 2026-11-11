@@ -1,4 +1,5 @@
 import amqp from "amqplib";
+import Notification from "./models/Notification.js";
 
 const exchange =
   process.env.RABBITMQ_EXCHANGE || "rideshare.events";
@@ -6,7 +7,6 @@ const exchange =
 const queue =
   process.env.RABBITMQ_QUEUE || "notification.events";
 
-// எல்லா notification event-களும் notifications.* என்ற routing key-ஐப் பயன்படுத்தும்.
 const routingPattern = "notifications.#";
 
 function isValidEvent(event) {
@@ -33,8 +33,6 @@ export async function startEventConsumer() {
   });
 
   await channel.bindQueue(queue, exchange, routingPattern);
-
-  // ஒரே நேரத்தில் process செய்யும் message எண்ணிக்கையை கட்டுப்படுத்துகிறது.
   channel.prefetch(10);
 
   await channel.consume(
@@ -49,26 +47,44 @@ export async function startEventConsumer() {
 
         if (!isValidEvent(event)) {
           console.error("Invalid notification event:", event);
-
-          // தவறான message-ஐ மீண்டும் மீண்டும் queue-க்கு அனுப்பாமல் நிராகரிக்கிறது.
           channel.nack(message, false, false);
           return;
         }
 
-        console.log("Notification event received:", {
-          eventId: event.eventId,
-          eventType: event.eventType,
-          recipientUserId: event.recipientUserId,
-          title: event.title,
-          body: event.body,
-          data: event.data || {},
-        });
+        await Notification.findOneAndUpdate(
+          {
+            eventId: event.eventId,
+            userId: event.recipientUserId,
+          },
+          {
+            $setOnInsert: {
+              eventId: event.eventId,
+              userId: event.recipientUserId,
+              type: event.eventType,
+              title: event.title,
+              body: event.body,
+              data: event.data || {},
+            },
+          },
+          {
+            upsert: true,
+            new: true,
+            setDefaultsOnInsert: true,
+          }
+        );
 
-        // அடுத்த கட்டத்தில் இங்கே MongoDB-ல் notification சேமித்து
-        // mobile push notification அனுப்புவோம்.
+        console.log(
+          "Notification saved to MongoDB:",
+          event.eventId
+        );
+
         channel.ack(message);
       } catch (error) {
-        console.error("Could not process event:", error.message);
+        console.error(
+          "Could not process notification:",
+          error.message
+        );
+
         channel.nack(message, false, false);
       }
     },

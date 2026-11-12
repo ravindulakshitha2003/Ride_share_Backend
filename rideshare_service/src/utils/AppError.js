@@ -1,14 +1,7 @@
-/*
-This code defines a custom AppError class to handle application errors with a message, 
-HTTP status code, and optional additional details. It helps manage errors consistently 
-across the backend.
-*/
-
-class AppError extends Error {
-  constructor(message, statusCode = 500, details) {
-    super(message);
-    this.statusCode = statusCode;
-    this.details = details;
-  }
+export default class AppError extends Error {
+    constructor(message, statusCode = 500) {
+        super(message);
+        this.name = 'AppError';
+        this.statusCode = statusCode;
+    }
 }
-module.exports = AppError;

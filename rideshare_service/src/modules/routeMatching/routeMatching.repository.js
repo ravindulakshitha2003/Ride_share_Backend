@@ -3,9 +3,14 @@ import pool from '../../db/pool.js';
 export async function saveSelectedDriverRoute(routeData) {
     const query = `
         INSERT INTO driver_routes (
-            driver_id, vehicle_id, route_signature,
-            origin_name, origin_latitude, origin_longitude,
-            destination_name, destination_latitude, destination_longitude,
+            driver_id,
+             vehicle_id,
+              route_signature,
+            origin_name, 
+            origin_latitude, 
+            origin_longitude,
+            destination_name, 
+            destination_latitude, destination_longitude,
             route_line, distance_meters, duration_seconds,
             intermediate_stops, departure_at, available_seats,
             price_per_seat, currency, status

@@ -1,7 +1,3 @@
-/*
-This code handles requests to routes that do not exist in the application. 
-It returns a 404 Not Found error with the requested HTTP method and URL.
-*/
-
-const AppError = require('../utils/AppError');
-module.exports = (req, res, next) => next(new AppError(`Route not found: ${req.method} ${req.originalUrl}`, 404));
+export default function notFound(req, res) {
+    res.status(404).json({ success: false, message: `Route not found: ${req.method} ${req.originalUrl}` });
+}

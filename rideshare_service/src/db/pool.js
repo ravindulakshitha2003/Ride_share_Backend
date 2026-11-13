@@ -1,8 +1,19 @@
-//This code creates a PostgreSQL connection pool using the database configuration 
-// from the environment settings. 
-// It exports the pool so other files can reuse database connections efficiently.
+import 'dotenv/config';
+import pg from 'pg';
+const { Pool } = pg;
 
-const { Pool } = require('pg');
-const { db } = require('../config/env');
+const env = process.env;
 
-module.exports = new Pool(db);
+const pool = new Pool({
+    host: env.PG_HOST || env.DB_HOST || 'localhost',
+    port: Number(env.PG_PORT || env.DB_PORT || 5432),
+    database: env.PG_DATABASE || env.DB_NAME || 'share_ride_db',
+    user: env.PG_USER || env.DB_USER || 'postgres',
+    password: String(env.PG_PASSWORD ?? env.DB_PASSWORD ?? ''),
+    max: 10,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 5000
+});
+
+pool.on('error', error => console.error('Unexpected PostgreSQL pool error:', error));
+export default pool;

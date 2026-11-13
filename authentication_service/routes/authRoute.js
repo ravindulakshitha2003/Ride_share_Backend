@@ -6,6 +6,7 @@ import {
   login,
   getMe,
   deleteMyAccount,
+  updateMyAccount,
 } from "../controllers/authController.js";
 
 import {
@@ -47,6 +48,14 @@ router.get(
   "/me",
   verifyToken,
   getMe
+);
+
+// Update logged-in user's profile
+router.put(
+  "/me",
+  verifyToken,
+  upload.single("profilePhoto"),
+  updateMyAccount
 );
 
 //delete user

@@ -238,8 +238,59 @@ export async function getMyVehicles(req, res, next) {
     next(error);
   }
 }
+//get vehicle by driver id
+export const getVehiclesByDriverId = async (req, res) => {
+  try {
+    const { driverId } = req.params;
+
+    // Validate the User ID
+    if (!mongoose.Types.ObjectId.isValid(driverId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid driver ID",
+      });
+    }
+
+    // Find Driver document using the User ID
+    const driver = await Driver.findOne({ driverId });
+
+    if (!driver) {
+      return res.status(404).json({
+        success: false,
+        message: "Driver not found",
+      });
+    }
+
+    // Find vehicles using the Driver document ID
+    const vehicles = await Vehicle.find({ driver: driver._id })
+      .sort({ createdAt: -1 });
+
+    return res.status(200).json({
+      success: true,
+      count: vehicles.length,
+      vehicles,
+    });
+
+  } catch (error) {
+    console.error("Get vehicles by driver ID error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to retrieve driver vehicles",
+    });
+  }
+};
+
+
+
+
+
+
+
 
 //update vehicle
+
+
 
 
 

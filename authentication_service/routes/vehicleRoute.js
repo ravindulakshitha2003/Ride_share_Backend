@@ -4,6 +4,7 @@ import express from "express";
 import {
   registerVehicle,
   getMyVehicles,
+  getVehiclesByDriverId,
   deleteMyVehicle,
   updateMyDriverProfile,
 } from "../controllers/vehicleController.js";
@@ -21,6 +22,14 @@ const router = express.Router();
 // All vehicle management endpoints require an authenticated driver.
 router.use(verifyToken, allowRoles("driver"));
 
+// Authenticated users can view a driver's vehicles
+router.get(
+  "/drivers/:driverId",
+  verifyToken,
+  getVehiclesByDriverId
+); 
+
+
 // Add another vehicle to the logged-in driver's profile.
 router.post(
   "/",
@@ -31,7 +40,7 @@ router.post(
 // Get all vehicles belonging to the logged-in driver.
 router.get("/me", getMyVehicles);
 
-// Update an existing vehicle.
+//Update an existing vehicle.
 router.put("/:id",  upload.single("vehiclePhoto"),updateMyDriverProfile);
 
 // Delete a vehicle belonging to the logged-in driver.

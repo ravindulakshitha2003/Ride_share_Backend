@@ -12,7 +12,7 @@ if (missing.length) {
 }
 
 module.exports = {
-  port: process.env.PORT || 5002,
+  port: process.env.PORT || 4002,
   jwtSecret: process.env.JWT_SECRET,
   db: {
     host: process.env.PG_HOST,

@@ -309,7 +309,7 @@ export async function getMe(req, res, next) {
   }
 }
 
-export async function deleteMyAccount(req, res, next) {
+export async function deleteAccount(req, res, next) {
   try {
     // Find the authenticated passenger.
     const user = await User.findById(req.user.id)
@@ -369,6 +369,172 @@ export async function deleteMyAccount(req, res, next) {
       message: "Your account has been deleted successfully",
     });
   } catch (error) {
+    next(error);
+  }
+}
+
+
+
+export async function updateMyAccount(req, res, next) {
+  try {
+    const user = await User.findById(req.user.id);
+
+    if (!user) {
+      return res.status(404).json({
+        message: "User not found",
+      });
+    }
+
+    const { name, mobile, email, gender, dateOfBirth } =
+      req.body ?? {};
+
+    // Update name
+    if (name !== undefined) {
+      if (
+        typeof name !== "string" ||
+        !name.trim() ||
+        name.trim().length > 100
+      ) {
+        return res.status(400).json({
+          message: "Invalid name",
+        });
+      }
+
+      user.name = name.trim();
+    }
+
+    // Update mobile
+    if (mobile !== undefined) {
+      if (typeof mobile !== "string") {
+        return res.status(400).json({
+          message: "Invalid mobile number",
+        });
+      }
+
+      const trimmedMobile = mobile.trim();
+
+      if (!/^(?:0\d{9}|\+94\d{9})$/.test(trimmedMobile)) {
+        return res.status(400).json({
+          message: "Enter a valid Sri Lankan mobile number",
+        });
+      }
+
+      const normalizedMobile = normalizeMobile(trimmedMobile);
+
+      const existingMobile = await User.findOne({
+        mobile: normalizedMobile,
+        _id: { $ne: user._id },
+      });
+
+      if (existingMobile) {
+        return res.status(409).json({
+          message: "Mobile number already registered",
+        });
+      }
+
+      user.mobile = normalizedMobile;
+    }
+
+    // Update email
+    if (email !== undefined) {
+      if (typeof email !== "string") {
+        return res.status(400).json({
+          message: "Invalid email address",
+        });
+      }
+
+      const normalizedEmail = email.trim().toLowerCase();
+
+      if (
+        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail) ||
+        normalizedEmail.length > 254
+      ) {
+        return res.status(400).json({
+          message: "Enter a valid email address",
+        });
+      }
+
+      const existingEmail = await User.findOne({
+        email: normalizedEmail,
+        _id: { $ne: user._id },
+      });
+
+      if (existingEmail) {
+        return res.status(409).json({
+          message: "Email already registered",
+        });
+      }
+
+      user.email = normalizedEmail;
+    }
+
+    // Update gender
+    if (gender !== undefined) {
+      if (
+        !["male", "female", "prefer_not_to_say"].includes(gender)
+      ) {
+        return res.status(400).json({
+          message: "Invalid gender value",
+        });
+      }
+
+      user.gender = gender;
+    }
+
+    // Update date of birth
+    if (dateOfBirth !== undefined) {
+      if (dateOfBirth === "") {
+        user.dateOfBirth = undefined;
+      } else {
+        if (
+          typeof dateOfBirth !== "string" ||
+          !/^\d{4}-\d{2}-\d{2}$/.test(dateOfBirth)
+        ) {
+          return res.status(400).json({
+            message: "Date of birth must use YYYY-MM-DD format",
+          });
+        }
+
+        const parsedDate = new Date(
+          `${dateOfBirth}T00:00:00.000Z`
+        );
+
+        if (
+          Number.isNaN(parsedDate.getTime()) ||
+          parsedDate.toISOString().slice(0, 10) !== dateOfBirth ||
+          parsedDate > new Date()
+        ) {
+          return res.status(400).json({
+            message: "Invalid date of birth",
+          });
+        }
+
+        user.dateOfBirth = parsedDate;
+      }
+    }
+
+    // Update profile photo
+    if (req.file) {
+      const uploadedPhoto = await uploadPhoto(req.file.buffer);
+
+      user.profilePhotoUrl = uploadedPhoto.secure_url;
+      user.profilePhotoPublicId = uploadedPhoto.public_id;
+    }
+
+    await user.save();
+
+    return res.status(200).json({
+      message: "Profile updated successfully",
+      user: publicUser(user),
+    });
+
+  } catch (error) {
+    if (error.code === 11000) {
+      return res.status(409).json({
+        message: "Email or mobile number already registered",
+      });
+    }
+
     next(error);
   }
 }

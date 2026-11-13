@@ -1,7 +1,7 @@
 {
   "name": "rideshare_service",
   "version": "1.0.0",
-  "description": "Share-Ride Route Matching API",
+  "description": "",
   "main": "src/server.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
@@ -12,11 +12,10 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "module",
+  "type": "commonjs",
   "dependencies": {
-    "body-parser": "^2.4.0",
     "cors": "^2.8.6",
-    "dotenv": "^18.0.10",
+    "dotenv": "^18.0.9",
     "express": "^5.3.0",
     "jsonwebtoken": "^9.0.3",
     "pg": "^8.23.1",

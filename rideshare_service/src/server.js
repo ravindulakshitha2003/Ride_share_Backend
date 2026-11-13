@@ -1,8 +1,10 @@
-import 'dotenv/config';
-import app from './app.js';
+/*
+This code starts the Express server and makes the application listen for incoming 
+API requests on the configured port. It also displays a message in the console when 
+the server starts successfully.
+*/
 
-const PORT = Number(process.env.PORT || 5000);
+const app = require('./app');
+const { port } = require('./config/env');
 
-app.listen(PORT, () => {
-    console.log(`Share-Ride API listening on port ${PORT}`);
-});
+app.listen(port, () => console.log(`rideshare_service running on port ${port}`));

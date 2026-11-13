@@ -309,7 +309,7 @@ export async function getMe(req, res, next) {
   }
 }
 
-export async function deleteMyAccount(req, res, next) {
+export async function deleteAccount(req, res, next) {
   try {
     // Find the authenticated passenger.
     const user = await User.findById(req.user.id)

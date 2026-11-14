@@ -36,6 +36,23 @@ async function findMyDriver(userId) {
   return Driver.findOne({ driverId: userId });
 }
 
+// Validate YYYY-MM-DD dates.
+function parseDate(value) {
+  if (
+    typeof value !== "string" ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(value)
+  ) {
+    return null;
+  }
+
+  const date = new Date(`${value}T00:00:00.000Z`);
+
+  return !Number.isNaN(date.getTime()) &&
+    date.toISOString().slice(0, 10) === value
+    ? date
+    : null;
+}
+
 // Register an additional vehicle for the logged-in driver.
 export async function registerVehicle(req, res, next) {
   let uploadedPhoto;
@@ -55,6 +72,7 @@ export async function registerVehicle(req, res, next) {
       model,
       year,
       color,
+      plateNumber,
       crNumber,
       passengerSeats,
       airConditioning,
@@ -64,12 +82,14 @@ export async function registerVehicle(req, res, next) {
       insuranceExpiry,
     } = req.body ?? {};
 
+    // Required fields.
     const requiredFields = {
       vehicleType,
       brand,
       model,
       year,
       color,
+      plateNumber,
       crNumber,
       passengerSeats,
       luggageSpace,
@@ -92,9 +112,13 @@ export async function registerVehicle(req, res, next) {
       });
     }
 
+    // Normalize values.
     const normalizedType = String(vehicleType).trim().toLowerCase();
     const normalizedLuggage = String(luggageSpace).trim().toLowerCase();
     const normalizedCR = String(crNumber).trim().toUpperCase();
+    const normalizedPlateNumber = String(plateNumber)
+      .trim()
+      .toUpperCase();
 
     if (!allowedTypes.includes(normalizedType)) {
       return res.status(400).json({
@@ -108,6 +132,7 @@ export async function registerVehicle(req, res, next) {
       });
     }
 
+    // Validate air conditioning.
     const ac = String(airConditioning ?? "false").toLowerCase();
 
     if (!["true", "false"].includes(ac)) {
@@ -116,6 +141,7 @@ export async function registerVehicle(req, res, next) {
       });
     }
 
+    // Validate year and seats.
     const parsedYear = Number(year);
     const parsedSeats = Number(passengerSeats);
 
@@ -139,22 +165,7 @@ export async function registerVehicle(req, res, next) {
       });
     }
 
-    function parseDate(value) {
-      if (
-        typeof value !== "string" ||
-        !/^\d{4}-\d{2}-\d{2}$/.test(value)
-      ) {
-        return null;
-      }
-
-      const date = new Date(`${value}T00:00:00.000Z`);
-
-      return !Number.isNaN(date.getTime()) &&
-        date.toISOString().slice(0, 10) === value
-        ? date
-        : null;
-    }
-
+    // Validate expiry dates.
     const revenueExpiry = parseDate(revenueLicenceExpiry);
     const insuranceExpiryDate = parseDate(insuranceExpiry);
 
@@ -164,15 +175,17 @@ export async function registerVehicle(req, res, next) {
       });
     }
 
+    // Vehicle photo is required.
     if (!req.file) {
       return res.status(400).json({
         message: "Vehicle photo is required",
       });
     }
 
-    // Upload photo after validating the request.
+    // Upload photo after validation.
     uploadedPhoto = await uploadVehiclePhoto(req.file.buffer);
 
+    // Save vehicle.
     const vehicle = await Vehicle.create({
       driver: driver._id,
       vehicleType: normalizedType,
@@ -180,6 +193,9 @@ export async function registerVehicle(req, res, next) {
       model: String(model).trim(),
       year: parsedYear,
       color: String(color).trim(),
+
+      plateNumber: normalizedPlateNumber,
+
       crNumber: normalizedCR,
       passengerSeats: parsedSeats,
       airConditioning: ac === "true",
@@ -195,8 +211,9 @@ export async function registerVehicle(req, res, next) {
       message: "Vehicle registered successfully",
       vehicle,
     });
+
   } catch (error) {
-    // Clean up the uploaded image if saving the vehicle fails.
+    // Delete uploaded photo if saving fails.
     if (uploadedPhoto?.public_id) {
       try {
         await cloudinary.uploader.destroy(uploadedPhoto.public_id);
@@ -207,7 +224,7 @@ export async function registerVehicle(req, res, next) {
 
     if (error.code === 11000) {
       return res.status(409).json({
-        message: "Vehicle registration number already exists",
+        message: "A vehicle with this plate number or CR number already exists",
       });
     }
 
@@ -219,8 +236,8 @@ export async function registerVehicle(req, res, next) {
 export async function getMyVehicles(req, res, next) {
   try {
     const driver = await findMyDriver(req.user.id);
-    
-   if (!driver) {
+
+    if (!driver) {
       return res.status(404).json({
         message: "Driver profile not found",
       });
@@ -234,16 +251,17 @@ export async function getMyVehicles(req, res, next) {
       count: vehicles.length,
       vehicles,
     });
+
   } catch (error) {
     next(error);
   }
 }
-//get vehicle by driver id
+
+// Get vehicles using the driver's User ID.
 export const getVehiclesByDriverId = async (req, res) => {
   try {
     const { driverId } = req.params;
 
-    // Validate the User ID
     if (!mongoose.Types.ObjectId.isValid(driverId)) {
       return res.status(400).json({
         success: false,
@@ -251,7 +269,6 @@ export const getVehiclesByDriverId = async (req, res) => {
       });
     }
 
-    // Find Driver document using the User ID
     const driver = await Driver.findOne({ driverId });
 
     if (!driver) {
@@ -261,9 +278,9 @@ export const getVehiclesByDriverId = async (req, res) => {
       });
     }
 
-    // Find vehicles using the Driver document ID
-    const vehicles = await Vehicle.find({ driver: driver._id })
-      .sort({ createdAt: -1 });
+    const vehicles = await Vehicle.find({
+      driver: driver._id,
+    }).sort({ createdAt: -1 });
 
     return res.status(200).json({
       success: true,
@@ -280,19 +297,6 @@ export const getVehiclesByDriverId = async (req, res) => {
     });
   }
 };
-
-
-
-
-
-
-
-
-//update vehicle
-
-
-
-
 
 // Delete a vehicle belonging to the logged-in driver.
 export async function deleteMyVehicle(req, res, next) {
@@ -340,19 +344,22 @@ export async function deleteMyVehicle(req, res, next) {
     return res.status(200).json({
       message: "Vehicle deleted successfully",
     });
+
   } catch (error) {
     next(error);
   }
 }
 
-//update vehicle profile
+// Update vehicle profile.
 export async function updateMyVehicle(req, res, next) {
   let uploadedPhoto;
   let saved = false;
 
   try {
     if (!mongoose.isValidObjectId(req.params.id)) {
-      return res.status(400).json({ message: "Invalid vehicle ID" });
+      return res.status(400).json({
+        message: "Invalid vehicle ID",
+      });
     }
 
     const driver = await findMyDriver(req.user.id);
@@ -369,15 +376,27 @@ export async function updateMyVehicle(req, res, next) {
     }).select("+vehiclePhotoPublicId");
 
     if (!vehicle) {
-      return res.status(404).json({ message: "Vehicle not found" });
+      return res.status(404).json({
+        message: "Vehicle not found",
+      });
     }
 
     const body = req.body ?? {};
+
     const allowedFields = [
-      "vehicleType", "brand", "model", "year", "color",
-      "crNumber", "passengerSeats", "airConditioning",
-      "luggageSpace", "vehicleDescription",
-      "revenueLicenceExpiry", "insuranceExpiry",
+      "vehicleType",
+      "brand",
+      "model",
+      "year",
+      "color",
+      "plateNumber",
+      "crNumber",
+      "passengerSeats",
+      "airConditioning",
+      "luggageSpace",
+      "vehicleDescription",
+      "revenueLicenceExpiry",
+      "insuranceExpiry",
     ];
 
     for (const field of allowedFields) {
@@ -412,20 +431,31 @@ export async function updateMyVehicle(req, res, next) {
           break;
         }
 
+        case "plateNumber": {
+          if (typeof value !== "string" || !value.trim()) {
+            return res.status(400).json({
+              message: "Vehicle plate number is required",
+            });
+          }
+
+          vehicle.plateNumber = value.trim().toUpperCase();
+          break;
+        }
+
         case "year": {
-          const year = Number(value);
+          const parsedYear = Number(value);
 
           if (
-            !Number.isInteger(year) ||
-            year < 1900 ||
-            year > new Date().getFullYear() + 1
+            !Number.isInteger(parsedYear) ||
+            parsedYear < 1900 ||
+            parsedYear > new Date().getFullYear() + 1
           ) {
             return res.status(400).json({
               message: "Invalid vehicle year",
             });
           }
 
-          vehicle.year = year;
+          vehicle.year = parsedYear;
           break;
         }
 
@@ -443,9 +473,7 @@ export async function updateMyVehicle(req, res, next) {
         }
 
         case "airConditioning": {
-          if (
-            ![true, false, "true", "false"].includes(value)
-          ) {
+          if (![true, false, "true", "false"].includes(value)) {
             return res.status(400).json({
               message: "airConditioning must be true or false",
             });
@@ -493,23 +521,11 @@ export async function updateMyVehicle(req, res, next) {
 
         case "revenueLicenceExpiry":
         case "insuranceExpiry": {
-          if (
-            typeof value !== "string" ||
-            !/^\d{4}-\d{2}-\d{2}$/.test(value)
-          ) {
-            return res.status(400).json({
-              message: `${field} must use YYYY-MM-DD format`,
-            });
-          }
+          const date = parseDate(value);
 
-          const date = new Date(`${value}T00:00:00.000Z`);
-
-          if (
-            Number.isNaN(date.getTime()) ||
-            date.toISOString().slice(0, 10) !== value
-          ) {
+          if (!date) {
             return res.status(400).json({
-              message: `Invalid ${field}`,
+              message: `${field} must be a valid YYYY-MM-DD date`,
             });
           }
 
@@ -521,8 +537,10 @@ export async function updateMyVehicle(req, res, next) {
 
     const oldPhotoPublicId = vehicle.vehiclePhotoPublicId;
 
+    // Update vehicle photo if a new one was uploaded.
     if (req.file) {
       uploadedPhoto = await uploadVehiclePhoto(req.file.buffer);
+
       vehicle.vehiclePhotoUrl = uploadedPhoto.secure_url;
       vehicle.vehiclePhotoPublicId = uploadedPhoto.public_id;
     }
@@ -530,6 +548,7 @@ export async function updateMyVehicle(req, res, next) {
     await vehicle.save();
     saved = true;
 
+    // Delete old photo after successful update.
     if (
       uploadedPhoto &&
       oldPhotoPublicId &&
@@ -549,6 +568,7 @@ export async function updateMyVehicle(req, res, next) {
       message: "Vehicle updated successfully",
       vehicle,
     });
+
   } catch (error) {
     if (uploadedPhoto?.public_id && !saved) {
       try {
@@ -563,11 +583,10 @@ export async function updateMyVehicle(req, res, next) {
 
     if (error.code === 11000) {
       return res.status(409).json({
-        message: "A vehicle with this CR number already exists",
+        message: "A vehicle with this plate number or CR number already exists",
       });
     }
 
     next(error);
   }
 }
-

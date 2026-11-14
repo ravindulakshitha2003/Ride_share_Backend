@@ -6,7 +6,7 @@ import {
   getMyVehicles,
   getVehiclesByDriverId,
   deleteMyVehicle,
-  updateMyDriverProfile,
+
 } from "../controllers/vehicleController.js";
 
 import {

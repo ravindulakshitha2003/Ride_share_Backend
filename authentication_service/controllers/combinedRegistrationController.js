@@ -1,4 +1,3 @@
-
 import mongoose from "mongoose";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
@@ -11,7 +10,6 @@ import cloudinary from "../cloudinary.js";
 function normalizeMobile(value) {
   const mobile = String(value || "").trim();
 
-  // Normalize Sri Lankan local mobile numbers.
   if (/^0\d{9}$/.test(mobile)) {
     return `+94${mobile.slice(1)}`;
   }
@@ -104,6 +102,7 @@ export async function registerDriverWithVehicle(req, res, next) {
       mobile,
       email,
       password,
+      confirmPassword,
       gender,
       dateOfBirth,
 
@@ -122,6 +121,7 @@ export async function registerDriverWithVehicle(req, res, next) {
       model,
       year,
       color,
+      plateNumber,
       crNumber,
       passengerSeats,
       airConditioning,
@@ -129,9 +129,33 @@ export async function registerDriverWithVehicle(req, res, next) {
       vehicleDescription,
       revenueLicenceExpiry,
       insuranceExpiry,
-    } = req.body;
+    } = req.body ?? {};
 
-    // Both images are required.
+    // Validate password and confirm password
+    if (
+      typeof password !== "string" ||
+      !password ||
+      typeof confirmPassword !== "string" ||
+      !confirmPassword
+    ) {
+      return res.status(400).json({
+        message: "Password and confirm password are required",
+      });
+    }
+
+    if (password !== confirmPassword) {
+      return res.status(400).json({
+        message: "Password and confirm password do not match",
+      });
+    }
+
+    if (password.length < 8) {
+      return res.status(400).json({
+        message: "Password must contain at least 8 characters",
+      });
+    }
+
+    // Both images are required
     const profilePhoto = req.files?.profilePhoto?.[0];
     const vehiclePhoto = req.files?.vehiclePhoto?.[0];
 
@@ -139,7 +163,6 @@ export async function registerDriverWithVehicle(req, res, next) {
       name,
       mobile,
       email,
-      password,
       nicNumber,
       drivingLicenceNumber,
       licenceClass,
@@ -152,6 +175,7 @@ export async function registerDriverWithVehicle(req, res, next) {
       model,
       year,
       color,
+      plateNumber,
       crNumber,
       passengerSeats,
       luggageSpace,
@@ -187,18 +211,21 @@ export async function registerDriverWithVehicle(req, res, next) {
     const normalizedEmail = String(email).trim().toLowerCase();
     const normalizedMobile = normalizeMobile(mobile);
 
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
-  return res.status(400).json({
-    message: "Enter a valid email address",
-  });
-    }
-
-    if (String(password).length < 8) {
+    // Validate email
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
       return res.status(400).json({
-        message: "Password must contain at least 8 characters",
+        message: "Enter a valid email address",
       });
     }
 
+    // Validate Sri Lankan mobile number
+    if (!/^(?:0\d{9}|\+94\d{9})$/.test(String(mobile).trim())) {
+      return res.status(400).json({
+        message: "Enter a valid Sri Lankan mobile number",
+      });
+    }
+
+    // Validate optional date of birth
     const parsedDOB = dateOfBirth ? parseDate(dateOfBirth) : null;
 
     if (dateOfBirth && !parsedDOB) {
@@ -240,11 +267,15 @@ export async function registerDriverWithVehicle(req, res, next) {
     const ac = String(airConditioning ?? "false").toLowerCase();
 
     if (!["car", "van", "suv", "other"].includes(normalizedVehicleType)) {
-      return res.status(400).json({ message: "Invalid vehicle type" });
+      return res.status(400).json({
+        message: "Invalid vehicle type",
+      });
     }
 
     if (!["available", "limited", "unavailable"].includes(normalizedLuggage)) {
-      return res.status(400).json({ message: "Invalid luggage space option" });
+      return res.status(400).json({
+        message: "Invalid luggage space option",
+      });
     }
 
     if (!["true", "false"].includes(ac)) {
@@ -261,20 +292,28 @@ export async function registerDriverWithVehicle(req, res, next) {
       parsedYear < 1900 ||
       parsedYear > new Date().getFullYear() + 1
     ) {
-      return res.status(400).json({ message: "Invalid vehicle year" });
+      return res.status(400).json({
+        message: "Invalid vehicle year",
+      });
     }
 
-    if (!Number.isInteger(parsedSeats) || parsedSeats < 1 || parsedSeats > 100) {
+    if (
+      !Number.isInteger(parsedSeats) ||
+      parsedSeats < 1 ||
+      parsedSeats > 100
+    ) {
       return res.status(400).json({
         message: "Passenger seats must be a whole number between 1 and 100",
       });
     }
 
-    // Check common duplicates before uploading photos.
+    // Normalize driver and vehicle identification numbers
     const normalizedNIC = String(nicNumber).trim();
     const normalizedLicence = String(drivingLicenceNumber).trim();
     const normalizedCR = String(crNumber).trim().toUpperCase();
+    const normalizedPlateNumber = String(plateNumber).trim().toUpperCase();
 
+    // Check duplicates before uploading photos
     const [existingUser, existingDriver, existingVehicle] =
       await Promise.all([
         User.findOne({
@@ -283,13 +322,20 @@ export async function registerDriverWithVehicle(req, res, next) {
             { mobile: normalizedMobile },
           ],
         }),
+
         Driver.findOne({
           $or: [
             { nicNumber: normalizedNIC },
             { drivingLicenceNumber: normalizedLicence },
           ],
         }),
-        Vehicle.findOne({ crNumber: normalizedCR }),
+
+        Vehicle.findOne({
+          $or: [
+            { crNumber: normalizedCR },
+            { plateNumber: normalizedPlateNumber },
+          ],
+        }),
       ]);
 
     if (existingUser) {
@@ -306,11 +352,11 @@ export async function registerDriverWithVehicle(req, res, next) {
 
     if (existingVehicle) {
       return res.status(409).json({
-        message: "Vehicle registration number is already registered",
+        message: "Vehicle registration number or plate number is already registered",
       });
     }
 
-    // Upload images. These uploads are outside the MongoDB transaction.
+    // Upload images
     const [profileImage, vehicleImage] = await Promise.all([
       uploadPhoto(profilePhoto, "share-ride/profiles"),
       uploadPhoto(vehiclePhoto, "share-ride/vehicles"),
@@ -321,12 +367,14 @@ export async function registerDriverWithVehicle(req, res, next) {
       vehicleImage.public_id
     );
 
+    // Hash password only
     const passwordHash = await bcrypt.hash(password, 12);
 
-    // MongoDB transactions require a replica set or supported sharded cluster.
+    // Start MongoDB transaction
     session.startTransaction();
     transactionStarted = true;
 
+    // Create User
     const [user] = await User.create(
       [
         {
@@ -344,6 +392,7 @@ export async function registerDriverWithVehicle(req, res, next) {
       { session }
     );
 
+    // Create Driver
     const [driver] = await Driver.create(
       [
         {
@@ -361,6 +410,7 @@ export async function registerDriverWithVehicle(req, res, next) {
       { session }
     );
 
+    // Create Vehicle
     const [vehicle] = await Vehicle.create(
       [
         {
@@ -370,6 +420,7 @@ export async function registerDriverWithVehicle(req, res, next) {
           model: String(model).trim(),
           year: parsedYear,
           color: String(color).trim(),
+          plateNumber: normalizedPlateNumber,
           crNumber: normalizedCR,
           passengerSeats: parsedSeats,
           airConditioning: ac === "true",
@@ -394,6 +445,7 @@ export async function registerDriverWithVehicle(req, res, next) {
       driver,
       vehicle,
     });
+
   } catch (error) {
     if (transactionStarted) {
       try {
@@ -408,12 +460,19 @@ export async function registerDriverWithVehicle(req, res, next) {
     }
 
     if (error.code === 11000) {
+      console.error("DUPLICATE KEY ERROR:", error);
+      console.error("DUPLICATE FIELD:", error.keyPattern);
+      console.error("DUPLICATE VALUE:", error.keyValue);
+
       return res.status(409).json({
-        message: "A unique value such as email, mobile, NIC, licence or CR number is already registered",
+        message: "Duplicate value detected",
+        field: error.keyPattern,
+        value: error.keyValue,
       });
     }
 
     next(error);
+
   } finally {
     await session.endSession();
   }

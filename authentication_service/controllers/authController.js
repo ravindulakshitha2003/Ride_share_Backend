@@ -69,6 +69,7 @@ export async function register(req, res, next) {
       mobile,
       email,
       password,
+      confirmPassword,
       role,
       gender,
       dateOfBirth,
@@ -85,6 +86,22 @@ export async function register(req, res, next) {
       return res.status(400).json({
         message:
           "Name, mobile, email, password and role are required",
+      });
+    }
+
+    // Validate confirm password
+    if (
+      typeof confirmPassword !== "string" ||
+      !confirmPassword
+    ) {
+      return res.status(400).json({
+        message: "Confirm password is required",
+      });
+    }
+
+    if (password !== confirmPassword) {
+      return res.status(400).json({
+        message: "Password and confirm password do not match",
       });
     }
 

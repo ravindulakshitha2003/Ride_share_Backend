@@ -4,10 +4,13 @@ import bookingRoutes from './modules/bookings/booking.routes.js';
 import { notFound } from './middleware/notFound.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
+
 const app = express();
 
 app.use(cors());
 app.use(express.json());
+
+
 
 // Simple health endpoint for local checks and service monitoring.
 app.get('/health', (req, res) => {

@@ -6,7 +6,7 @@ import {
   getMyVehicles,
   getVehiclesByDriverId,
   deleteMyVehicle,
-  updateMyDriverProfile,
+  updateMyVehicle,
 } from "../controllers/vehicleController.js";
 
 import {
@@ -15,7 +15,6 @@ import {
 } from "../middleware/authMiddleware.js";
 
 import upload from "../middleware/uploadMiddleware.js";
-import { updateMyDriverProfile } from "../controllers/driverController.js";
 
 const router = express.Router();
 
@@ -41,7 +40,7 @@ router.post(
 router.get("/me", getMyVehicles);
 
 //Update an existing vehicle.
-router.put("/:id",  upload.single("vehiclePhoto"),updateMyDriverProfile);
+router.put("/:id",  upload.single("vehiclePhoto"),updateMyVehicle);
 
 // Delete a vehicle belonging to the logged-in driver.
 router.delete("/:id", deleteMyVehicle);

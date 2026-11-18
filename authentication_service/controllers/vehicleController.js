@@ -238,6 +238,44 @@ export async function getMyVehicles(req, res, next) {
     next(error);
   }
 }
+
+
+
+//get driver data  to the othere uses 
+
+export async function getdriverVehicles(req, res, next) {
+   console.log(req.body)
+   console.log(req.user)
+  try {
+    const driver = await findMyDriver(req.body.driverID);
+    
+   if (!driver) {
+      return res.status(404).json({
+        message: "Driver profile not found",
+      });
+    }
+
+    const vehicles = await Vehicle.findById(req.body.vehicalID)
+    if (!vehicles) {
+      return res.status(404).json({
+        message: "vehical not found",
+      });
+    }
+
+    return res.status(200).json({
+      vehicles,
+      driver
+    });
+  } catch (error) {
+    next(error);
+  }
+  return res.status(200).json({
+        success:true,
+        message: "data resived",
+      });
+}
+
+
 //get vehicle by driver id
 export const getVehiclesByDriverId = async (req, res) => {
   try {

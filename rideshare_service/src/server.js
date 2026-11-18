@@ -1,29 +1,30 @@
 
-import "dotenv/config";
-import app from "./app.js";
-import { connectRabbitMQ } from "./config/rabbitmq.js";
+import 'dotenv/config';
+import app from './app.js';
+import { connectRabbitMQ } from './config/rabbitmq.js';
+import { startOutboxWorker } from './workers/outboxWorker.js';
 
 const PORT = Number(process.env.PORT || 5000);
 
 async function startServer() {
-  try {
-    // Connect to RabbitMQ first
-    await connectRabbitMQ();
+    try {
+        await connectRabbitMQ();
 
-    // Start Express server
-    app.listen(PORT, "0.0.0.0", () => {
-      console.log(
-        `Share-Ride API listening on port ${PORT}`
-      );
-    });
-  } catch (error) {
-    console.error(
-      "Failed to start Ride Publishing Service:",
-      error.message
-    );
+        // Start the Outbox Worker after RabbitMQ connects.
+        startOutboxWorker();
 
-    process.exit(1);
-  }
+        app.listen(PORT, '0.0.0.0', () => {
+            console.log(`Share-Ride API listening on port ${PORT}`);
+        });
+
+    } catch (error) {
+        console.error(
+            'Failed to start Ride Publishing Service:',
+            error.message
+        );
+
+        process.exit(1);
+    }
 }
 
 startServer();

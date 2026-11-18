@@ -1,5 +1,6 @@
 import AppError from '../../utils/AppError.js';
 import { saveSelectedDriverRoute } from './routeMatching.repository.js';
+import { randomUUID } from 'node:crypto';
 
 function validCoordinates(lat, lng) {
     return Number.isFinite(lat) && Number.isFinite(lng) &&
@@ -71,34 +72,71 @@ function validatePayload(body) {
     }
 }
 
+
 export async function publishSelectedRoute(body) {
     validatePayload(body);
 
     const driverId = process.env.TEMP_DRIVER_ID;
-    if (!driverId) throw new AppError('TEMP_DRIVER_ID is not configured', 500);
 
-    return saveSelectedDriverRoute({
-        driverId,
-        vehicleId: String(body.vehicleId),
-        originName: String(body.origin.placeName || 'Unknown origin'),
-        originLatitude: Number(body.origin.latitude),
-        originLongitude: Number(body.origin.longitude),
-        destinationName: String(body.destination.placeName || 'Unknown destination'),
-        destinationLatitude: Number(body.destination.latitude),
-        destinationLongitude: Number(body.destination.longitude),
-        geometry: {
-            type: 'LineString',
-            coordinates: body.geometry.coordinates.map(p => [Number(p[0]), Number(p[1])])
+    if (!driverId) {
+        throw new AppError('TEMP_DRIVER_ID is not configured', 500);
+    }
+
+    return saveSelectedDriverRoute(
+        {
+            driverId,
+            vehicleId: String(body.vehicleId),
+
+            originName: String(body.origin.placeName || 'Unknown origin'),
+            originLatitude: Number(body.origin.latitude),
+            originLongitude: Number(body.origin.longitude),
+
+            destinationName: String(
+                body.destination.placeName || 'Unknown destination'
+            ),
+            destinationLatitude: Number(body.destination.latitude),
+            destinationLongitude: Number(body.destination.longitude),
+
+            geometry: {
+                type: 'LineString',
+                coordinates: body.geometry.coordinates.map(p => [
+                    Number(p[0]),
+                    Number(p[1])
+                ])
+            },
+
+            distanceMeters: Number(body.distanceMeters),
+            durationSeconds: Number(body.durationSeconds),
+            intermediateStops: [],
+
+            departureAt: departureTimestamp(
+                body.departureDate,
+                body.departureTime
+            ),
+
+            availableSeats: Number(body.availableSeats),
+            pricePerSeat: Number(body.pricePerSeat),
+            currency: 'LKR'
         },
-        distanceMeters: Number(body.distanceMeters),
-        durationSeconds: Number(body.durationSeconds),
-        intermediateStops: [],
-        departureAt: departureTimestamp(body.departureDate, body.departureTime),
-        availableSeats: Number(body.availableSeats),
-        pricePerSeat: Number(body.pricePerSeat),
-        currency: 'LKR'
-    });
+
+        // Build the event from the saved database record
+        (savedRide) => ({
+            eventId: randomUUID(),
+            eventType: 'ride.published',
+            recipientUserId: String(savedRide.driver_id),
+            title: 'Ride published successfully',
+
+            body: `Your ride from ${savedRide.origin_name} to ${savedRide.destination_name} has been published successfully.`,
+
+            data: {
+                rideId: String(savedRide.route_id),
+                origin: savedRide.origin_name,
+                destination: savedRide.destination_name
+            }
+        })
+    );
 }
+
 
 import { findMatchingRoutes } from './routeMatching.repository.js';
 

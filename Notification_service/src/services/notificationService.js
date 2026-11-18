@@ -114,4 +114,10 @@ export async function markAllNotificationsAsRead(userId) {
     modifiedCount: result.modifiedCount,
   };
 }
+export async function getUnreadNotificationCount(userId) {
+  return Notification.countDocuments({
+    userId,
+    readAt: null,
+  });
+}
 

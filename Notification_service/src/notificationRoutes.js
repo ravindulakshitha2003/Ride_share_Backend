@@ -7,6 +7,7 @@ import {
   getUnread,
   markAsRead,
   markAllAsRead,
+  getUnreadCount,
 } from "./controllers/notificationController.js";
 
 const router = express.Router();
@@ -22,5 +23,7 @@ router.patch("/read-all", requireAuth, markAllAsRead);
 
 // Mark one notification as read
 router.patch("/:id/read", requireAuth, markAsRead);
+
+router.get("/unread-count", requireAuth, getUnreadCount);
 
 export default router;

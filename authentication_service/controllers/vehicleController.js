@@ -244,37 +244,66 @@ export async function getMyVehicles(req, res, next) {
 //get driver data  to the othere uses 
 
 export async function getdriverVehicles(req, res, next) {
-   console.log(req.body)
-   console.log(req.user)
   try {
-    const driver = await findMyDriver(req.body.driverID);
-    
-   if (!driver) {
+    const { driverID, vehicalID } = req.body;
+
+    const driver = await findMyDriver(driverID);
+
+    if (!driver) {
       return res.status(404).json({
-        message: "Driver profile not found",
+        success: false,
+        message: 'Driver profile not found',
       });
     }
 
-    const vehicles = await Vehicle.findById(req.body.vehicalID)
-    if (!vehicles) {
+    // Make sure this vehicle belongs to this driver
+    const vehicle = await Vehicle.findOne({
+      _id: vehicalID,
+      driver: driver._id,
+    }).select(
+      'vehicleType brand model year color passengerSeats airConditioning luggageSpace vehicleDescription vehiclePhotoUrl'
+    );
+
+    if (!vehicle) {
       return res.status(404).json({
-        message: "vehical not found",
+        success: false,
+        message: 'Vehicle not found',
       });
     }
+
+    // Return only necessary driver information
+    const driverDetails = {
+      verificationStatus: driver.verificationStatus,
+    };
+
+    // Return only necessary vehicle information
+    const vehicleDetails = {
+      _id: vehicle._id,
+      vehicleType: vehicle.vehicleType,
+      brand: vehicle.brand,
+      model: vehicle.model,
+      year: vehicle.year,
+      color: vehicle.color,
+      passengerSeats: vehicle.passengerSeats,
+      airConditioning: vehicle.airConditioning,
+      luggageSpace: vehicle.luggageSpace,
+      vehicleDescription: vehicle.vehicleDescription,
+      vehiclePhotoUrl: vehicle.vehiclePhotoUrl,
+    };
 
     return res.status(200).json({
-      vehicles,
-      driver
+      success: true,
+      message: 'Vehicle and driver details retrieved successfully',
+      data: {
+        vehicle: vehicleDetails,
+        driver: driverDetails,
+      },
     });
+
   } catch (error) {
     next(error);
   }
-  return res.status(200).json({
-        success:true,
-        message: "data resived",
-      });
 }
-
 
 //get vehicle by driver id
 export const getVehiclesByDriverId = async (req, res) => {

@@ -30,3 +30,9 @@ export const searchMatchingRoutes = asyncHandler(async (req, res) => {
     const data = await searchRoutes(req.body);
     res.status(200).json({ success: true, count: data.length, data });
 });
+
+
+
+
+
+

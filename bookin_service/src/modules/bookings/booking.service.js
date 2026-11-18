@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import * as repository from './booking.repository.js';
+import { assertTransition } from '../lifecycle/statusRules.js';
+import { rejectPendingBooking } from '../lifecycle/lifecycle.repository.js';
 import {
   getRideBookingInfo,
   reserveSeats,
@@ -121,18 +123,25 @@ export async function acceptBooking(bookingId, driverId) {
 }
 
 export async function rejectBooking(bookingId, driverId, reason) {
-  const booking = await repository.setBookingStatus(
-    bookingId, 'PENDING', 'REJECTED',
-    { reason, owner: 'driver', ownerId: driverId }
-  );
+  // Try the reject (status, history and event in one transaction)
+  const booking = await rejectPendingBooking({ bookingId, driverId, reason });
+  if (booking) return booking;
 
-  if (!booking) {
-    // Ownership is checked inside the UPDATE to prevent changing another driver's booking.
-    throw Object.assign(new Error('Booking not found or no longer pending'), { status: 404 });
+  // Nothing was updated, so find out WHY and give a clear error
+  const existing = await repository.findBookingById(bookingId);
+
+  if (!existing) {
+    throw Object.assign(new Error('Booking not found'), { status: 404 });
+  }
+  if (existing.driver_id !== driverId) {
+    throw Object.assign(new Error('This booking is not assigned to you'), { status: 403 });
   }
 
-  await repository.createStatusOutboxEvent(booking, 'BookingRejected');
-  return booking;
+  // The status guard throws 409 INVALID_TRANSITION if the status cannot become REJECTED
+  assertTransition(existing.status, 'REJECTED');
+
+  // Status is still PENDING, so someone changed it at the same moment
+  throw Object.assign(new Error('Booking was changed by another request. Try again.'), { status: 409 });
 }
 
 export async function cancelBooking(bookingId, passengerId) {

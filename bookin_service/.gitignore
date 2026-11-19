@@ -1,6 +1,2 @@
 node_modules/
 .env
-npm-debug.log*
-.DS_Store
-
-src/server.local.js

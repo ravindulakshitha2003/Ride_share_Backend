@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import bcrypt from "bcrypt";
-import jwt from "jsonwebtoken";
+//import jwt from "jsonwebtoken";
+import { sendVerificationCode } from "../utils/verification.js";
 
 import User from "../models/User.js";
 import Driver from "../models/Driver.js";
@@ -17,7 +18,7 @@ function normalizeMobile(value) {
   return mobile;
 }
 
-function createToken(user) {
+/*function createToken(user) {
   return jwt.sign(
     {
       name: user.name,
@@ -29,7 +30,7 @@ function createToken(user) {
       expiresIn: process.env.JWT_EXPIRES_IN || "1d",
     }
   );
-}
+}*/
 
 function publicUser(user) {
   return {
@@ -38,6 +39,7 @@ function publicUser(user) {
     mobile: user.mobile,
     email: user.email,
     role: user.role,
+    emailVerified: user.emailVerified ?? false,
     gender: user.gender,
     dateOfBirth: user.dateOfBirth
       ? user.dateOfBirth.toISOString()
@@ -438,9 +440,19 @@ export async function registerDriverWithVehicle(req, res, next) {
     await session.commitTransaction();
     transactionStarted = false;
 
+    // Send the code only after the transaction commits, and catch email
+    // errors here so they can't trigger the cleanup below, which would
+    // delete the photos of an account that was saved successfully.
+    try {
+      user.$session(null); // detach the finished transaction session
+      await sendVerificationCode(user);
+    } catch (emailError) {
+      console.error("Verification email failed:", emailError.message);
+    }
+
     return res.status(201).json({
-      message: "Driver account and vehicle registered successfully",
-      token: createToken(user),
+      message:
+        "Driver account registered. Check your email for the verification code.",
       user: publicUser(user),
       driver,
       vehicle,

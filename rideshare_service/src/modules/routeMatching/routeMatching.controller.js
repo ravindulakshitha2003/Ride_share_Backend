@@ -1,5 +1,14 @@
-import asyncHandler from '../../utils/asyncHandler.js';
-import { publishSelectedRoute, searchRoutes } from './routeMatching.service.js';
+
+import { randomUUID } from "node:crypto";
+
+import asyncHandler from "../../utils/asyncHandler.js";
+import {
+  publishSelectedRoute,
+  searchRoutes,
+} from "./routeMatching.service.js";
+
+
+
 
 import { sendMessage } from '../../producer/Producter.js';
 
@@ -26,9 +35,15 @@ export const publishRoute = asyncHandler(async (req, res) => {
   });
 });
 
+
 export const searchMatchingRoutes = asyncHandler(async (req, res) => {
-    const data = await searchRoutes(req.body);
-    res.status(200).json({ success: true, count: data.length, data });
+  const data = await searchRoutes(req.body);
+
+  res.status(200).json({
+    success: true,
+    count: data.length,
+    data,
+  });
 });
 
 

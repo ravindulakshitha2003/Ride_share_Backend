@@ -2,7 +2,7 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import { startEventConsumer } from "./rabbitmq.js";
-import mongoose from "mongoose";
+import { connectDatabase } from "./config/database.js";
 import notificationRoutes from "./notificationRoutes.js";
 
 const app = express();
@@ -29,8 +29,7 @@ async function start() {
     throw new Error("MONGO_URI is missing from .env");
     }
 
-    await mongoose.connect(process.env.MONGO_URI);
-    console.log("Connected to MongoDB");
+   await connectDatabase();
 
   // RabbitMQ consumer-ஐ முதலில் connect செய்கிறது.
   await startEventConsumer();

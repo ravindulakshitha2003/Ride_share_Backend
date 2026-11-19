@@ -21,6 +21,11 @@ import {
   allowRoles,
 } from "../middleware/authMiddleware.js";
 
+import { verifyEmail 
+        ,resendVerification,
+        forgotPassword,resetPassword} from "../controllers/authController.js";
+import { otpLimiter } from '../middleware/rateLimiters.js';
+
 const router = express.Router();
 
 // Passenger registration
@@ -42,6 +47,11 @@ router.post(
   ]),
   registerDriverWithVehicle
 );
+
+router.post('/verify-email', verifyEmail);
+router.post('/resend-verification', otpLimiter, resendVerification);
+router.post('/forgot-password', otpLimiter, forgotPassword);
+router.post('/reset-password', otpLimiter, resetPassword);
 
 // View own profile (passengers)
 router.get(

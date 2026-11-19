@@ -2,6 +2,9 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import User from "../models/User.js";
 import cloudinary from "../cloudinary.js";
+import { generateOtp, hashOtp, OTP_TTL_MS, MAX_OTP_ATTEMPTS } from '../utils/otp.js';
+import { sendEmail } from '../utils/email.js';
+import { sendVerificationCode } from "../utils/verification.js";
 
 function createToken(user) {
   return jwt.sign(
@@ -69,6 +72,7 @@ export async function register(req, res, next) {
       mobile,
       email,
       password,
+      confirmPassword,
       role,
       gender,
       dateOfBirth,
@@ -85,6 +89,22 @@ export async function register(req, res, next) {
       return res.status(400).json({
         message:
           "Name, mobile, email, password and role are required",
+      });
+    }
+
+    // Validate confirm password
+    if (
+      typeof confirmPassword !== "string" ||
+      !confirmPassword
+    ) {
+      return res.status(400).json({
+        message: "Confirm password is required",
+      });
+    }
+
+    if (password !== confirmPassword) {
+      return res.status(400).json({
+        message: "Password and confirm password do not match",
       });
     }
 
@@ -224,11 +244,26 @@ export async function register(req, res, next) {
       profilePhotoPublicId: uploadedPhoto.public_id,
     });
 
-    return res.status(201).json({
+    /*return res.status(201).json({
       message: "Registration successful",
       user: publicUser(user),
       token: createToken(user),
+    });*/
+
+        // A failed email must not undo the registration. The user can
+    // request a new code with /auth/resend-verification.
+    try {
+      await sendVerificationCode(user);
+    } catch (emailError) {
+      console.error("Verification email failed:", emailError.message);
+    }
+
+    return res.status(201).json({
+      message:
+        "Registration successful. Check your email for the verification code.",
+      user: publicUser(user),
     });
+
   } catch (error) {
     // Remove uploaded photo if account creation fails
     if (uploadedPhoto?.public_id) {
@@ -278,6 +313,13 @@ export async function login(req, res, next) {
     ) {
       return res.status(401).json({
         message: "Invalid email or password",
+      });
+    }
+
+   if (!user.emailVerified) {
+      return res.status(403).json({
+        message: "Please verify your email first",
+        code: "EMAIL_NOT_VERIFIED",
       });
     }
 
@@ -385,6 +427,8 @@ export async function updateMyAccount(req, res, next) {
       });
     }
 
+     let emailChanged = false;
+
     const { name, mobile, email, gender, dateOfBirth } =
       req.body ?? {};
 
@@ -465,7 +509,11 @@ export async function updateMyAccount(req, res, next) {
         });
       }
 
-      user.email = normalizedEmail;
+      if (normalizedEmail !== user.email) {
+        user.email = normalizedEmail;
+        user.emailVerified = false;
+        emailChanged = true;
+      };
     }
 
     // Update gender
@@ -523,6 +571,14 @@ export async function updateMyAccount(req, res, next) {
 
     await user.save();
 
+    if (emailChanged) {
+      try {
+        await sendVerificationCode(user);
+      } catch (emailError) {
+        console.error("Verification email failed:", emailError.message);
+      }
+    }
+
     return res.status(200).json({
       message: "Profile updated successfully",
       user: publicUser(user),
@@ -535,6 +591,193 @@ export async function updateMyAccount(req, res, next) {
       });
     }
 
+    next(error);
+  }
+}
+
+export async function verifyEmail(req, res, next) {
+  try {
+    const { email, otp } = req.body ?? {};
+
+    if (typeof email !== "string" || !otp) {
+      return res.status(400).json({
+        message: "Email and code are required",
+      });
+    }
+
+    const user = await User.findOne({
+      email: email.trim().toLowerCase(),
+    }).select("+emailOtpHash +emailOtpExpires +emailOtpAttempts");
+
+    if (
+      !user ||
+      !user.emailOtpHash ||
+      user.emailOtpExpires < Date.now()
+    ) {
+      return res.status(400).json({
+        message: "Invalid or expired code",
+      });
+    }
+
+    if (user.emailOtpAttempts >= MAX_OTP_ATTEMPTS) {
+      return res.status(429).json({
+        message: "Too many attempts. Request a new code.",
+      });
+    }
+
+    if (hashOtp(String(otp).trim()) !== user.emailOtpHash) {
+      user.emailOtpAttempts += 1;
+      await user.save();
+      return res.status(400).json({
+        message: "Invalid or expired code",
+      });
+    }
+
+    user.emailVerified = true;
+    user.emailOtpHash = undefined;
+    user.emailOtpExpires = undefined;
+    user.emailOtpAttempts = 0;
+    await user.save();
+
+    return res.status(200).json({
+      message: "Email verified",
+      user: publicUser(user),
+      token: createToken(user),
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function resendVerification(req, res, next) {
+  try {
+    const { email } = req.body ?? {};
+
+    if (typeof email === "string") {
+      const user = await User.findOne({
+        email: email.trim().toLowerCase(),
+      });
+
+      if (user && !user.emailVerified) {
+        try {
+          await sendVerificationCode(user);
+        } catch (emailError) {
+          console.error("Verification email failed:", emailError.message);
+        }
+      }
+    }
+
+    // Same response whether or not the account exists
+    return res.status(200).json({
+      message:
+        "If the account exists and is unverified, a new code has been sent.",
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function forgotPassword(req, res, next) {
+  try {
+    const { email } = req.body ?? {};
+
+    if (typeof email !== "string" || !email.trim()) {
+      return res.status(400).json({
+        message: "Email is required",
+      });
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+      return res.status(400).json({
+        message: "Enter a valid email address",
+      });
+    }
+
+    const user = await User.findOne({ email: normalizedEmail });
+
+    if (user) {
+      try {
+        const otp = generateOtp();
+        user.resetOtpHash = hashOtp(otp);
+        user.resetOtpExpires = Date.now() + OTP_TTL_MS;
+        user.resetOtpAttempts = 0;
+        await user.save();
+
+        await sendEmail({
+          to: user.email,
+          subject: "Share-Ride password reset",
+          text: `Your reset code is ${otp}. It expires in 15 minutes. If you didn't request this, ignore this email.`,
+        });
+      } catch (emailError) {
+        console.error("Reset email failed:", emailError.message);
+      }
+    }
+
+    // Same response whether or not the account exists
+    return res.status(200).json({
+      message: "If that email is registered, a reset code has been sent.",
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function resetPassword(req, res, next) {
+  try {
+    const { email, otp, newPassword } = req.body ?? {};
+
+    if (
+      typeof email !== "string" ||
+      !otp ||
+      typeof newPassword !== "string" ||
+      newPassword.length < 8
+    ) {
+      return res.status(400).json({
+        message:
+          "Email, code and a new password of at least 8 characters are required",
+      });
+    }
+
+    const user = await User.findOne({
+      email: email.trim().toLowerCase(),
+    }).select("+resetOtpHash +resetOtpExpires +resetOtpAttempts");
+
+    if (
+      !user ||
+      !user.resetOtpHash ||
+      user.resetOtpExpires < Date.now()
+    ) {
+      return res.status(400).json({
+        message: "Invalid or expired code",
+      });
+    }
+
+    if (user.resetOtpAttempts >= MAX_OTP_ATTEMPTS) {
+      return res.status(429).json({
+        message: "Too many attempts. Request a new code.",
+      });
+    }
+
+    if (hashOtp(String(otp).trim()) !== user.resetOtpHash) {
+      user.resetOtpAttempts += 1;
+      await user.save();
+      return res.status(400).json({
+        message: "Invalid or expired code",
+      });
+    }
+
+    user.passwordHash = await bcrypt.hash(newPassword, 12);
+    user.resetOtpHash = undefined;
+    user.resetOtpExpires = undefined;
+    user.resetOtpAttempts = 0;
+    await user.save();
+
+    return res.status(200).json({
+      message: "Password updated. You can now log in.",
+    });
+  } catch (error) {
     next(error);
   }
 }

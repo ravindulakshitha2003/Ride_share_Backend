@@ -5,6 +5,8 @@ let channel;
 
 export async function connectRabbitMQ() {
   try {
+
+    
     connection = await amqp.connect(
       process.env.RABBITMQ_URL
     );

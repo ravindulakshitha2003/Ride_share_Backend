@@ -6,6 +6,7 @@ import {
   login,
   getMe,
   deleteMyAccount,
+  updateMyAccount,
 } from "../controllers/authController.js";
 
 import {
@@ -19,6 +20,11 @@ import {
   verifyToken,
   allowRoles,
 } from "../middleware/authMiddleware.js";
+
+import { verifyEmail 
+        ,resendVerification,
+        forgotPassword,resetPassword} from "../controllers/authController.js";
+import { otpLimiter } from '../middleware/rateLimiters.js';
 
 const router = express.Router();
 
@@ -42,11 +48,24 @@ router.post(
   registerDriverWithVehicle
 );
 
+router.post('/verify-email', verifyEmail);
+router.post('/resend-verification', otpLimiter, resendVerification);
+router.post('/forgot-password', otpLimiter, forgotPassword);
+router.post('/reset-password', otpLimiter, resetPassword);
+
 // View own profile (passengers)
 router.get(
   "/me",
   verifyToken,
   getMe
+);
+
+// Update logged-in user's profile
+router.put(
+  "/me",
+  verifyToken,
+  upload.single("profilePhoto"),
+  updateMyAccount
 );
 
 //delete user

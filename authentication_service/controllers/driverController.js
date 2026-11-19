@@ -215,8 +215,7 @@ export async function getMyDriverProfile(req, res, next) {
   }
 }
 
-
-
+//update driver profile
 export async function updateMyDriverProfile(req, res, next) {
   try {
     const updates = {};
@@ -265,3 +264,4 @@ export async function updateMyDriverProfile(req, res, next) {
     next(error);
   }
 }
+

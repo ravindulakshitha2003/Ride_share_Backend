@@ -71,19 +71,20 @@ function validatePayload(body) {
     }
 }
 
-export async function publishSelectedRoute(body) {
+export async function publishSelectedRoute(body,userdata) {
     validatePayload(body);
-
-    const driverId = process.env.TEMP_DRIVER_ID;
+   
+  
+    const driverId = String(userdata.sub);
     if (!driverId) throw new AppError('TEMP_DRIVER_ID is not configured', 500);
 
     return saveSelectedDriverRoute({
         driverId,
         vehicleId: String(body.vehicleId),
-        originName: String(body.origin.placeName || 'Unknown origin'),
+        originName: String(body.origin.placeName ),
         originLatitude: Number(body.origin.latitude),
         originLongitude: Number(body.origin.longitude),
-        destinationName: String(body.destination.placeName || 'Unknown destination'),
+        destinationName: String(body.destination.placeName),
         destinationLatitude: Number(body.destination.latitude),
         destinationLongitude: Number(body.destination.longitude),
         geometry: {

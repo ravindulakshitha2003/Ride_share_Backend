@@ -3,6 +3,7 @@ import { env } from './config/env.js';
 import { pool } from './config/database.js';
 import { startOutboxPublisher } from './messaging/outboxPublisher.js';
 
+
 async function startServer() {
   // Check PostgreSQL before accepting requests.
   await pool.query('SELECT 1');

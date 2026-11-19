@@ -72,51 +72,25 @@ function validatePayload(body) {
     }
 }
 
-
-export async function publishSelectedRoute(body) {
+export async function publishSelectedRoute(body,userdata) {
     validatePayload(body);
+   
+  
+    const driverId = String(userdata.sub);
+    if (!driverId) throw new AppError('TEMP_DRIVER_ID is not configured', 500);
 
-    const driverId = process.env.TEMP_DRIVER_ID;
-
-    if (!driverId) {
-        throw new AppError('TEMP_DRIVER_ID is not configured', 500);
-    }
-
-    return saveSelectedDriverRoute(
-        {
-            driverId,
-            vehicleId: String(body.vehicleId),
-
-            originName: String(body.origin.placeName || 'Unknown origin'),
-            originLatitude: Number(body.origin.latitude),
-            originLongitude: Number(body.origin.longitude),
-
-            destinationName: String(
-                body.destination.placeName || 'Unknown destination'
-            ),
-            destinationLatitude: Number(body.destination.latitude),
-            destinationLongitude: Number(body.destination.longitude),
-
-            geometry: {
-                type: 'LineString',
-                coordinates: body.geometry.coordinates.map(p => [
-                    Number(p[0]),
-                    Number(p[1])
-                ])
-            },
-
-            distanceMeters: Number(body.distanceMeters),
-            durationSeconds: Number(body.durationSeconds),
-            intermediateStops: [],
-
-            departureAt: departureTimestamp(
-                body.departureDate,
-                body.departureTime
-            ),
-
-            availableSeats: Number(body.availableSeats),
-            pricePerSeat: Number(body.pricePerSeat),
-            currency: 'LKR'
+    return saveSelectedDriverRoute({
+        driverId,
+        vehicleId: String(body.vehicleId),
+        originName: String(body.origin.placeName ),
+        originLatitude: Number(body.origin.latitude),
+        originLongitude: Number(body.origin.longitude),
+        destinationName: String(body.destination.placeName),
+        destinationLatitude: Number(body.destination.latitude),
+        destinationLongitude: Number(body.destination.longitude),
+        geometry: {
+            type: 'LineString',
+            coordinates: body.geometry.coordinates.map(p => [Number(p[0]), Number(p[1])])
         },
 
         // Build the event from the saved database record

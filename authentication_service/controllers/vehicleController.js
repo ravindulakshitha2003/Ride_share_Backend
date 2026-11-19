@@ -244,6 +244,7 @@ export async function getMyVehicles(req, res, next) {
 //get driver data  to the othere uses 
 
 export async function getdriverVehicles(req, res, next) {
+  console.log(req.body)
   try {
     const { driverID, vehicalID } = req.body;
 

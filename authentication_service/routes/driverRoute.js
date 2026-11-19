@@ -24,6 +24,6 @@ router.post("/", createDriverProfile);
 router.get("/me", getMyDriverProfile);
 router.put("/me",updateMyDriverProfile);
 router.delete("/convert-to-passenger", convertDriverToPassenger);
-router.get("/getDriver&Vehical",getdriverVehicles)
+router.post("/getDriver&Vehical",getdriverVehicles)
 
 export default router;

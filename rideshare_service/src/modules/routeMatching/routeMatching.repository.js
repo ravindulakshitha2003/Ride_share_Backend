@@ -54,29 +54,29 @@ export async function saveSelectedDriverRoute(routeData, createEvent) {
         const savedRide = result.rows[0];
 
         // 2. Build the notification event using saved ride details
-        const event = createEvent(savedRide);
+        // const event = createEvent(savedRide);
 
         // 3. Save the event in the Outbox table
-        const outboxQuery = `
-            INSERT INTO outbox_events (
-                event_id,
-                aggregate_type,
-                aggregate_id,
-                event_type,
-                routing_key,
-                payload
-            )
-            VALUES ($1, $2, $3, $4, $5, $6::jsonb)
-        `;
+        // const outboxQuery = `
+        //     INSERT INTO outbox_events (
+        //         event_id,
+        //         aggregate_type,
+        //         aggregate_id,
+        //         event_type,
+        //         routing_key,
+        //         payload
+        //     )
+        //     VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+        // `;
 
-        await client.query(outboxQuery, [
-            event.eventId,
-            'ride',
-            savedRide.route_id,
-            event.eventType,
-            'ride.published',
-            JSON.stringify(event)
-        ]);
+        // await client.query(outboxQuery, [
+        //     event.eventId,
+        //     'ride',
+        //     savedRide.route_id,
+        //     event.eventType,
+        //     'ride.published',
+        //     JSON.stringify(event)
+        // ]);
 
         // 4. Commit both inserts together
         await client.query('COMMIT');

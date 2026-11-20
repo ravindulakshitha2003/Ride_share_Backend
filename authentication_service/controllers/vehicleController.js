@@ -257,13 +257,9 @@ export async function getMyVehicles(req, res, next) {
   }
 }
 
-<<<<<<< HEAD
-
-
-//get driver data  to the othere uses 
-
+// Get driver data to the other users (ride details + driver details).
 export async function getdriverVehicles(req, res, next) {
-  console.log(req.body)
+  console.log(req.body);
   try {
     const { driverID, vehicalID } = req.body;
 
@@ -325,10 +321,7 @@ export async function getdriverVehicles(req, res, next) {
   }
 }
 
-//get vehicle by driver id
-=======
 // Get vehicles using the driver's User ID.
->>>>>>> origin
 export const getVehiclesByDriverId = async (req, res) => {
   try {
     const { driverId } = req.params;

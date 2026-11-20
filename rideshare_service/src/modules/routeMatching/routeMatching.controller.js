@@ -9,14 +9,14 @@ export const publishRoute = asyncHandler(async (req, res) => {
   const data = await publishSelectedRoute(req.body, req.user);
 
   // 2. Publish an event to RabbitMQ.
-//   await sendMessage(
-//     'ROUTE_PUBLISHED',
-//     'route.published',
-//     {
-//       route: data,
-//       driverId: req.user.id
-//     }
-//   );
+  await sendMessage(
+    'ROUTE_PUBLISHED',
+    'route.published',
+    {
+      route: data,
+      driverId: req.user.id
+    }
+  );
 
   // 3. Respond to the frontend.
   return res.status(201).json({

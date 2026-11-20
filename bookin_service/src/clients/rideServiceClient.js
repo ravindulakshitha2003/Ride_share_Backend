@@ -32,7 +32,8 @@ export async function getRideById(rideId) {
   if (!baseUrl) {
     return {
       rideId,
-      driverId: process.env.DEV_DRIVER_ID || 'driver-1',
+      // Must be a UUID because driver_id is a UUID column in your database.
+      driverId: (process.env.DEV_DRIVER_ID || '11111111-1111-4111-8111-111111111111').toLowerCase(),
       totalSeats: Number(process.env.DEV_RIDE_TOTAL_SEATS || 4),
     };
   }
@@ -83,7 +84,7 @@ function normaliseRide(rideId, body) {
 
   return {
     rideId,
-    driverId: String(driverId),
+    driverId: String(driverId).toLowerCase(),
     // null = "unknown" -> the seat-capacity check on accept is skipped.
     totalSeats: Number.isFinite(Number(totalSeats)) ? Number(totalSeats) : null,
   };

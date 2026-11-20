@@ -121,7 +121,7 @@ async function changeBookingStatus({ bookingId, actor, action, reason = null, ex
       bookingId,
       previousStatus,
       newStatus,
-      changedBy: `${actor.role}:${actor.id}`, // e.g. "DRIVER:driver-1"
+      changedBy: `${actor.role}:${actor.id}`, // e.g. "DRIVER:11111111-1111-4111-8111-111111111111"
       reason,
     });
 

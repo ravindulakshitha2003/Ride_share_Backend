@@ -23,6 +23,17 @@ export function errorHandler(error, req, res, next) {
     });
   }
 
+  // PostgreSQL error 22P02 = "invalid input syntax", e.g. a non-UUID value
+  // sent for a UUID column (driver_id / passenger_id). That's bad input from
+  // the caller -> 400, not a server crash (500).
+  if (error.code === '22P02') {
+    return res.status(400).json({
+      success: false,
+      code: 'INVALID_ID_FORMAT',
+      message: 'One of the ids has an invalid format (expected a UUID).',
+    });
+  }
+
   // Malformed JSON body (e.g. missing quote) -> 400 instead of 500.
   if (error.type === 'entity.parse.failed') {
     return res.status(400).json({ success: false, message: 'Request body is not valid JSON' });

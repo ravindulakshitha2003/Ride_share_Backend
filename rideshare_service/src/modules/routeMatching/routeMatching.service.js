@@ -1,100 +1,84 @@
-import AppError from '../../utils/AppError.js';
 
+import AppError from '../../utils/AppError.js';
 import {
     saveSelectedDriverRoute,
     findMatchingRoutes
 } from './routeMatching.repository.js';
+import { randomUUID } from 'node:crypto';
 
-
-// ==================================================
-// Coordinate Validation
-// ==================================================
-
+/**
+ * Validate latitude and longitude.
+ */
 function validCoordinates(lat, lng) {
-    return (
-        Number.isFinite(lat) &&
+    return Number.isFinite(lat) &&
         Number.isFinite(lng) &&
         lat >= -90 &&
         lat <= 90 &&
         lng >= -180 &&
-        lng <= 180
-    );
+        lng <= 180;
 }
 
-
-// ==================================================
-// Date Validation
-// ==================================================
-
-function validateDate(date) {
-    if (
-        typeof date !== 'string' ||
-        !/^\d{4}-\d{2}-\d{2}$/.test(date)
-    ) {
-        throw new AppError(
-            'departureDate must be YYYY-MM-DD',
-            400
-        );
+/**
+ * Validate YYYY-MM-DD format and actual calendar date.
+ */
+function validDate(date) {
+    if (typeof date !== 'string' ||
+        !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        return false;
     }
 
     const parsed = new Date(`${date}T00:00:00Z`);
 
-    if (
-        Number.isNaN(parsed.getTime()) ||
-        parsed.toISOString().slice(0, 10) !== date
-    ) {
-        throw new AppError(
-            'Invalid departure date',
-            400
-        );
-    }
+    return !Number.isNaN(parsed.getTime()) &&
+        parsed.toISOString().slice(0, 10) === date;
 }
 
-
-// ==================================================
-// Time Validation
-// ==================================================
-
-function validateTime(time) {
-    if (
-        typeof time !== 'string' ||
-        !/^([01]\d|2[0-3]):[0-5]\d$/.test(time)
-    ) {
-        throw new AppError(
-            'departureTime must be HH:mm',
-            400
-        );
-    }
+/**
+ * Validate HH:mm format and time ranges.
+ */
+function validTime(time) {
+    return typeof time === 'string' &&
+        /^([01]\d|2[0-3]):([0-5]\d)$/.test(time);
 }
 
-
-// ==================================================
-// Timezone Offset
-// ==================================================
-
-function getTimezoneOffset() {
+/**
+ * Get configured timezone offset.
+ *
+ * Sri Lanka default: +05:30
+ */
+function tzOffset() {
     const offset = process.env.APP_TIMEZONE_OFFSET || '+05:30';
 
-    if (!/^[+-](0\d|1[0-4]):[0-5]\d$/.test(offset)) {
-        throw new AppError(
-            'Invalid APP_TIMEZONE_OFFSET',
-            500
-        );
+    const validOffset =
+        /^[+-](?:0\d|1[0-3]):[0-5]\d$/.test(offset) ||
+        /^[+-]14:00$/.test(offset);
+
+    if (!validOffset) {
+        throw new AppError('Invalid APP_TIMEZONE_OFFSET', 500);
     }
 
     return offset;
 }
 
-
-// ==================================================
-// Departure Timestamp
-// ==================================================
-
+/**
+ * Convert departure date and time into ISO timestamp.
+ */
 function departureTimestamp(date, time) {
-    validateDate(date);
-    validateTime(time);
+    if (!validDate(date)) {
+        throw new AppError(
+            'departureDate must be a valid YYYY-MM-DD date',
+            400
+        );
+    }
 
-    const offset = getTimezoneOffset();
+    if (!validTime(time)) {
+        throw new AppError(
+            'departureTime must be a valid HH:mm time',
+            400
+        );
+    }
+
+    const offset = tzOffset();
 
     const parsed = new Date(
         `${date}T${time}:00${offset}`
@@ -110,13 +94,13 @@ function departureTimestamp(date, time) {
     return parsed.toISOString();
 }
 
-
-// ==================================================
-// GeoJSON Geometry Validation
-// ==================================================
-
+/**
+ * Validate OSRM GeoJSON LineString geometry.
+ *
+ * Coordinates must be:
+ * [longitude, latitude]
+ */
 function validateGeometry(geometry) {
-
     if (
         !geometry ||
         geometry.type !== 'LineString' ||
@@ -128,7 +112,6 @@ function validateGeometry(geometry) {
         );
     }
 
-
     if (geometry.coordinates.length < 2) {
         throw new AppError(
             'geometry must contain at least 2 coordinates',
@@ -136,27 +119,18 @@ function validateGeometry(geometry) {
         );
     }
 
-
-    const invalidCoordinates = geometry.coordinates.some(point => {
-
-        if (
-            !Array.isArray(point) ||
-            point.length < 2
-        ) {
+    const badCoordinate = geometry.coordinates.some(point => {
+        if (!Array.isArray(point) || point.length < 2) {
             return true;
         }
 
+        const longitude = Number(point[0]);
+        const latitude = Number(point[1]);
 
-        const lng = Number(point[0]);
-
-        const lat = Number(point[1]);
-
-
-        return !validCoordinates(lat, lng);
+        return !validCoordinates(latitude, longitude);
     });
 
-
-    if (invalidCoordinates) {
+    if (badCoordinate) {
         throw new AppError(
             'geometry coordinates must be [longitude, latitude] pairs in valid ranges',
             400
@@ -164,13 +138,10 @@ function validateGeometry(geometry) {
     }
 }
 
-
-// ==================================================
-// Publish Payload Validation
-// ==================================================
-
+/**
+ * Validate ride publishing request.
+ */
 function validatePayload(body) {
-
     if (
         !body ||
         !body.origin ||
@@ -184,56 +155,43 @@ function validatePayload(body) {
         );
     }
 
-
-    // Validate origin
-
-    const originLat = Number(body.origin.latitude);
-
-    const originLng = Number(body.origin.longitude);
-
-
-    if (!validCoordinates(originLat, originLng)) {
-        throw new AppError(
-            'Origin coordinates are invalid',
-            400
-        );
-    }
-
-
-    // Validate destination
-
-    const destinationLat = Number(body.destination.latitude);
-
-    const destinationLng = Number(body.destination.longitude);
-
-
-    if (!validCoordinates(destinationLat, destinationLng)) {
-        throw new AppError(
-            'Destination coordinates are invalid',
-            400
-        );
-    }
-
-
-    // Validate place names
-
     if (
-        !body.origin.placeName ||
-        !body.destination.placeName
+        !validCoordinates(
+            Number(body.origin.latitude),
+            Number(body.origin.longitude)
+        ) ||
+        !validCoordinates(
+            Number(body.destination.latitude),
+            Number(body.destination.longitude)
+        )
     ) {
         throw new AppError(
-            'Origin and destination names are required',
+            'Origin or destination coordinates are invalid',
             400
         );
     }
 
+    if (
+        typeof body.origin.placeName !== 'string' ||
+        !body.origin.placeName.trim()
+    ) {
+        throw new AppError(
+            'origin.placeName is required',
+            400
+        );
+    }
 
-    // Validate geometry
+    if (
+        typeof body.destination.placeName !== 'string' ||
+        !body.destination.placeName.trim()
+    ) {
+        throw new AppError(
+            'destination.placeName is required',
+            400
+        );
+    }
 
     validateGeometry(body.geometry);
-
-
-    // Validate distance
 
     if (
         !Number.isFinite(Number(body.distanceMeters)) ||
@@ -245,9 +203,6 @@ function validatePayload(body) {
         );
     }
 
-
-    // Validate duration
-
     if (
         !Number.isFinite(Number(body.durationSeconds)) ||
         Number(body.durationSeconds) <= 0
@@ -258,24 +213,16 @@ function validatePayload(body) {
         );
     }
 
-
-    // Validate seats
-
-    const availableSeats = Number(body.availableSeats);
-
     if (
-        !Number.isInteger(availableSeats) ||
-        availableSeats < 1 ||
-        availableSeats > 20
+        !Number.isInteger(Number(body.availableSeats)) ||
+        Number(body.availableSeats) < 1 ||
+        Number(body.availableSeats) > 20
     ) {
         throw new AppError(
             'availableSeats must be an integer between 1 and 20',
             400
         );
     }
-
-
-    // Validate price
 
     if (
         !Number.isFinite(Number(body.pricePerSeat)) ||
@@ -287,127 +234,123 @@ function validatePayload(body) {
         );
     }
 
+    if (!body.departureDate || !body.departureTime) {
+        throw new AppError(
+            'departureDate and departureTime are required',
+            400
+        );
+    }
 
-    // Validate departure date and time
+    if (!validDate(body.departureDate)) {
+        throw new AppError(
+            'departureDate must be a valid YYYY-MM-DD date',
+            400
+        );
+    }
 
-    validateDate(body.departureDate);
-
-    validateTime(body.departureTime);
+    if (!validTime(body.departureTime)) {
+        throw new AppError(
+            'departureTime must be a valid HH:mm time',
+            400
+        );
+    }
 }
 
-
-// ==================================================
-// Publish Selected Driver Route
-// ==================================================
-
+/**
+ * Publish a driver's selected route.
+ *
+ * This function:
+ * 1. Validates the frontend request.
+ * 2. Gets the authenticated driver's ID.
+ * 3. Saves the ride.
+ * 4. Creates the ride.published event.
+ * 5. Saves the ride and event in one database transaction.
+ */
 export async function publishSelectedRoute(body, userdata) {
-
-    // 1. Validate frontend payload
-
     validatePayload(body);
 
-
-    // 2. Get authenticated driver ID
-
-    const driverId = userdata?.sub ?? userdata?.id;
-
-
-    if (!driverId) {
+    if (!userdata?.sub) {
         throw new AppError(
-            'Authenticated driver ID is missing',
+            'Authenticated user ID is missing',
             401
         );
     }
 
+    const driverId = String(userdata.sub);
 
-    // 3. Convert departure date and time to UTC
+    return saveSelectedDriverRoute(
+        {
+            driverId,
 
-    const departureAt = departureTimestamp(
-        body.departureDate,
-        body.departureTime
-    );
+            vehicleId: String(body.vehicleId),
 
+            originName: String(body.origin.placeName),
+            originLatitude: Number(body.origin.latitude),
+            originLongitude: Number(body.origin.longitude),
 
-    // 4. Prepare route data
+            destinationName: String(body.destination.placeName),
+            destinationLatitude: Number(body.destination.latitude),
+            destinationLongitude: Number(body.destination.longitude),
 
-    const routeData = {
+            geometry: {
+                type: 'LineString',
+                coordinates: body.geometry.coordinates.map(point => [
+                    Number(point[0]),
+                    Number(point[1])
+                ])
+            },
 
-        driverId: String(driverId),
+            distanceMeters: Number(body.distanceMeters),
+            durationSeconds: Number(body.durationSeconds),
 
-        vehicleId: String(body.vehicleId),
+            intermediateStops: [],
 
+            departureAt: departureTimestamp(
+                body.departureDate,
+                body.departureTime
+            ),
 
-        // Origin
+            availableSeats: Number(body.availableSeats),
+            pricePerSeat: Number(body.pricePerSeat),
 
-        originName: String(body.origin.placeName),
-
-        originLatitude: Number(body.origin.latitude),
-
-        originLongitude: Number(body.origin.longitude),
-
-
-        // Destination
-
-        destinationName: String(body.destination.placeName),
-
-        destinationLatitude: Number(body.destination.latitude),
-
-        destinationLongitude: Number(body.destination.longitude),
-
-
-        // GeoJSON route geometry
-
-        geometry: {
-            type: 'LineString',
-
-            coordinates: body.geometry.coordinates.map(point => [
-                Number(point[0]),
-                Number(point[1])
-            ])
+            currency: 'LKR'
         },
 
+        // Build the event from the saved database record.
+        (savedRide) => ({
+            eventId: randomUUID(),
 
-        // Route metrics
+            eventType: 'ride.published',
 
-        distanceMeters: Number(body.distanceMeters),
+            recipientUserId: String(savedRide.driver_id),
 
-        durationSeconds: Number(body.durationSeconds),
+            title: 'Ride published successfully',
 
+            body: `Your ride from ${savedRide.origin_name} to ${savedRide.destination_name} has been published successfully.`,
 
-        // Ride information
-
-        availableSeats: Number(body.availableSeats),
-
-        pricePerSeat: Number(body.pricePerSeat),
-
-
-        // Departure
-
-        departureAt
-    };
-
-
-    // 5. Save route through repository
-
-    const savedRoute = await saveSelectedDriverRoute(routeData);
-
-
-    // 6. Return saved route to controller
-
-    return savedRoute;
+            data: {
+                rideId: String(savedRide.route_id),
+                origin: savedRide.origin_name,
+                destination: savedRide.destination_name
+            }
+        })
+    );
 }
 
-
-// ==================================================
-// Search Matching Routes
-// ==================================================
-
+/**
+ * Search for matching driver routes.
+ *
+ * Passengers provide:
+ * - pickup
+ * - dropoff
+ * - seats
+ * - departureDate
+ * - departureTime (optional)
+ * - windowMinutes (optional)
+ * - maxDistanceMeters (optional)
+ */
 export async function searchRoutes(body) {
-
-    // 1. Validate pickup and dropoff
-
     const { pickup, dropoff } = body || {};
-
 
     if (!pickup || !dropoff) {
         throw new AppError(
@@ -416,43 +359,30 @@ export async function searchRoutes(body) {
         );
     }
 
-
-    // 2. Pickup coordinates
-
     const pLat = Number(pickup.latitude);
-
     const pLng = Number(pickup.longitude);
 
-
-    if (!validCoordinates(pLat, pLng)) {
-        throw new AppError(
-            'Pickup coordinates are invalid',
-            400
-        );
-    }
-
-
-    // 3. Dropoff coordinates
-
     const dLat = Number(dropoff.latitude);
-
     const dLng = Number(dropoff.longitude);
 
-
-    if (!validCoordinates(dLat, dLng)) {
+    if (
+        !validCoordinates(pLat, pLng) ||
+        !validCoordinates(dLat, dLng)
+    ) {
         throw new AppError(
-            'Dropoff coordinates are invalid',
+            'pickup or dropoff coordinates are invalid',
             400
         );
     }
 
-
-    // 4. Validate requested seats
-
-    const seats = body.seats === undefined
-        ? 1
-        : Number(body.seats);
-
+    /**
+     * Number of passenger seats.
+     * Default: 1
+     */
+    const seats =
+        body.seats === undefined
+            ? 1
+            : Number(body.seats);
 
     if (
         !Number.isInteger(seats) ||
@@ -465,13 +395,14 @@ export async function searchRoutes(body) {
         );
     }
 
-
-    // 5. Validate maximum distance
-
-    const maxDistanceMeters = body.maxDistanceMeters === undefined
-        ? 5000
-        : Number(body.maxDistanceMeters);
-
+    /**
+     * Maximum pickup/dropoff distance from the driver route.
+     * Default: 5000 meters (5 km)
+     */
+    const maxDistanceMeters =
+        body.maxDistanceMeters === undefined
+            ? 5000
+            : Number(body.maxDistanceMeters);
 
     if (
         !Number.isFinite(maxDistanceMeters) ||
@@ -484,40 +415,36 @@ export async function searchRoutes(body) {
         );
     }
 
-
-    // 6. Validate departure date
-
     const { departureDate, departureTime } = body;
 
+    if (!validDate(departureDate)) {
+        throw new AppError(
+            'departureDate must be a valid YYYY-MM-DD date',
+            400
+        );
+    }
 
-    validateDate(departureDate);
-
-
-    // 7. Get timezone offset
-
-    const offset = getTimezoneOffset();
-
-
-    // 8. Calculate search time window
+    const offset = tzOffset();
 
     let from;
-
     let to;
 
-
+    /**
+     * If the passenger specifies a time,
+     * search within a time window.
+     */
     if (departureTime !== undefined) {
+        if (!validTime(departureTime)) {
+            throw new AppError(
+                'departureTime must be a valid HH:mm time',
+                400
+            );
+        }
 
-        // Validate requested time
-
-        validateTime(departureTime);
-
-
-        // Default search window: 60 minutes
-
-        const windowMinutes = body.windowMinutes === undefined
-            ? 60
-            : Number(body.windowMinutes);
-
+        const windowMinutes =
+            body.windowMinutes === undefined
+                ? 60
+                : Number(body.windowMinutes);
 
         if (
             !Number.isFinite(windowMinutes) ||
@@ -530,13 +457,9 @@ export async function searchRoutes(body) {
             );
         }
 
-
-        // Requested departure time
-
         const center = new Date(
             `${departureDate}T${departureTime}:00${offset}`
         );
-
 
         if (Number.isNaN(center.getTime())) {
             throw new AppError(
@@ -545,24 +468,18 @@ export async function searchRoutes(body) {
             );
         }
 
-
-        // Before requested departure
-
         from = new Date(
             center.getTime() - windowMinutes * 60000
         );
 
-
-        // After requested departure
-
         to = new Date(
             center.getTime() + windowMinutes * 60000
         );
-
     } else {
-
-        // Search entire selected day
-
+        /**
+         * If the passenger does not specify a time,
+         * search throughout the selected day.
+         */
         from = new Date(
             `${departureDate}T00:00:00${offset}`
         );
@@ -570,7 +487,6 @@ export async function searchRoutes(body) {
         to = new Date(
             `${departureDate}T23:59:59${offset}`
         );
-
 
         if (
             Number.isNaN(from.getTime()) ||
@@ -583,23 +499,16 @@ export async function searchRoutes(body) {
         }
     }
 
-
-    // 9. Search routes through repository
-
-    return await findMatchingRoutes({
-
+    return findMatchingRoutes({
         pickupLat: pLat,
-
         pickupLng: pLng,
 
         dropoffLat: dLat,
-
         dropoffLng: dLng,
 
         seats,
 
         departFrom: from.toISOString(),
-
         departTo: to.toISOString(),
 
         maxDistanceMeters

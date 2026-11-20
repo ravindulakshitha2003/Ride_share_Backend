@@ -57,7 +57,7 @@ export async function saveSelectedDriverRoute(routeData, createEvent) {
         const event = createEvent(savedRide);
 
         // 3. Save the event in the Outbox table
-        const outboxQuery = `
+     const outboxQuery = `
             INSERT INTO outbox_events (
                 event_id,
                 aggregate_type,

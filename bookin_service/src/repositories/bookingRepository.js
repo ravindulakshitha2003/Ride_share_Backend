@@ -22,7 +22,8 @@ export async function insertBooking(client, booking) {
       dropoff_walk_distance_m,
       extra_distance_m,
       extra_duration_seconds,
-      status
+      status,
+      driver_id -- added for booking lifecycle
     )
     VALUES (
       $1, $2, $3, $4, $5,
@@ -33,12 +34,14 @@ export async function insertBooking(client, booking) {
       ST_SetSRID(ST_MakePoint($15, $16), 4326)::geography,
       $17,
       ST_SetSRID(ST_MakePoint($18, $19), 4326)::geography,
-      $20, $21, $22, $23, 'PENDING'
+      $20, $21, $22, $23, 'PENDING',
+      $24 -- driver_id
     )
     RETURNING
       booking_id,
       passenger_id,
       ride_id,
+      driver_id,
       requested_seats,
       note,
       status,
@@ -69,6 +72,7 @@ export async function insertBooking(client, booking) {
     booking.dropoffWalkDistanceM,
     booking.extraDistanceM,
     booking.extraDurationSeconds,
+    booking.driverId ?? null, // $24 - added for booking lifecycle
   ];
 
   const result = await client.query(query, values);

@@ -11,8 +11,9 @@ export function requireAuth(req, res, next) {
 
   try {
     const token = authorization.slice(7);
-    const payload = jwt.verify(token, process.env.JWT_SECRET);
 
+    const payload = jwt.verify(token, process.env.JWT_SECRET);
+   
     if (!payload.sub) {
       return res.status(401).json({
         message: "Invalid authentication token",

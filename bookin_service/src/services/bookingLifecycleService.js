@@ -34,7 +34,7 @@ import {
   sumConfirmedSeats,
   updateBookingStatus,
 } from '../repositories/bookingLifecycleRepository.js';
-import { getRideById } from '../clients/rideServiceClient.js';
+import { getRideById, updateRideSeats } from '../clients/rideServiceClient.js';
 import { publishBookingStatusChanged } from '../events/bookingEvents.js';
 import { toBookingResponse, toHistoryResponse } from '../utils/bookingMapper.js';
 import { HttpError } from '../utils/httpError.js';
@@ -183,7 +183,7 @@ export async function acceptBooking(driverId, bookingId) {
   }
   const ride = await getRideById(row.ride_id);
 
-  return changeBookingStatus({
+  const result = await changeBookingStatus({
     bookingId,
     actor: { id: driverId, role: ActorRole.DRIVER },
     action: BookingAction.ACCEPT,
@@ -205,6 +205,11 @@ export async function acceptBooking(driverId, bookingId) {
       }
     },
   });
+
+  // After successful commit: decrement available_seats in rideshare service
+  await updateRideSeats(row.ride_id, -row.requested_seats);
+
+  return result;
 }
 
 /** Driver REJECTS a pending request (reason is optional). */
@@ -219,12 +224,23 @@ export async function rejectBooking(driverId, bookingId, reason) {
 
 /** Passenger OR driver CANCELS. The state machine decides what each may do. */
 export async function cancelBooking(actor, bookingId, reason) {
-  return changeBookingStatus({
+  // If the booking was CONFIRMED, we need to restore seats
+  const row = await findBookingById(bookingId);
+  const wasConfirmed = row?.status === 'CONFIRMED';
+
+  const result = await changeBookingStatus({
     bookingId,
     actor,
     action: BookingAction.CANCEL,
     reason,
   });
+
+  // Restore seats only if the booking was confirmed (seats were decremented on accept)
+  if (wasConfirmed && row?.ride_id) {
+    await updateRideSeats(row.ride_id, +row.requested_seats);
+  }
+
+  return result;
 }
 
 /** Driver marks a CONFIRMED booking as COMPLETED (trip done). */

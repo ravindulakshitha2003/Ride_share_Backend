@@ -1,4 +1,4 @@
-CREATE DATABASE share_ride_db;
+CREATE DATABASE Bookingdb;
 
 CREATE TABLE IF NOT EXISTS bookings (
     booking_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

@@ -13,34 +13,52 @@ import { ActorRole } from '../domain/bookingStatus.js';
 // (e.g. 11111111-1111-4111-8111-111111111111). If we sent "driver-1" to
 // PostgreSQL it would crash with "invalid input syntax for type uuid".
 // So we check the format here and answer with a clear 401 instead.
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$|^[0-9a-f]{24}$|^[a-zA-Z0-9_\-]+$/i;
+
+function extractTokenUser(req) {
+  if (!req.headers.authorization) return null;
+  try {
+    const parts = req.headers.authorization.split(' ');
+    if (parts.length === 2 && parts[0].toLowerCase() === 'bearer') {
+      const payload = JSON.parse(Buffer.from(parts[1].split('.')[1], 'base64').toString('utf8'));
+      return { id: payload.sub || payload.id || payload.userId, role: payload.role?.toUpperCase() };
+    }
+  } catch (e) {
+    // ignore
+  }
+  return null;
+}
 
 function invalidIdResponse(res, headerName) {
   return res.status(401).json({
     success: false,
-    message: `${headerName} must be a valid UUID (temporary development auth).`,
+    message: `${headerName} must be a valid ID string (temporary development auth).`,
   });
 }
 
 /** Only drivers may pass (accept, reject, complete, D1/D2 screens). */
 export function driverIdentity(req, res, next) {
-  const driverId = req.header('x-driver-id');
+  let driverId = req.header('x-driver-id') || req.header('x-user-id');
+
+  if (!driverId) {
+    const tokenUser = extractTokenUser(req);
+    if (tokenUser?.id) {
+      driverId = tokenUser.id;
+    }
+  }
 
   if (!driverId) {
     return res.status(401).json({
       success: false,
-      message: 'Missing x-driver-id header (temporary development auth).',
+      message: 'Missing x-driver-id or Authorization header (temporary development auth).',
     });
   }
 
-  if (!UUID_PATTERN.test(driverId)) {
+  if (!ID_PATTERN.test(driverId)) {
     return invalidIdResponse(res, 'x-driver-id');
   }
 
-  // PostgreSQL always returns UUIDs in lowercase. We lowercase here too, so
-  // comparing "is this the booking's driver?" works even if the app sent
-  // capital letters.
-  req.user = { id: driverId.toLowerCase(), role: ActorRole.DRIVER };
+  req.user = { id: String(driverId).toLowerCase(), role: ActorRole.DRIVER };
   next();
 }
 
@@ -49,8 +67,19 @@ export function driverIdentity(req, res, next) {
  * Exactly one of the two headers must be present.
  */
 export function driverOrPassengerIdentity(req, res, next) {
-  const driverId = req.header('x-driver-id');
-  const passengerId = req.header('x-passenger-id');
+  let driverId = req.header('x-driver-id');
+  let passengerId = req.header('x-passenger-id');
+
+  if (!driverId && !passengerId) {
+    const tokenUser = extractTokenUser(req);
+    if (tokenUser?.id) {
+      if (tokenUser.role === 'DRIVER') {
+        driverId = tokenUser.id;
+      } else {
+        passengerId = tokenUser.id;
+      }
+    }
+  }
 
   if (driverId && passengerId) {
     return res.status(400).json({
@@ -60,16 +89,13 @@ export function driverOrPassengerIdentity(req, res, next) {
   }
 
   if (driverId) {
-    if (!UUID_PATTERN.test(driverId)) return invalidIdResponse(res, 'x-driver-id');
-    req.user = { id: driverId.toLowerCase(), role: ActorRole.DRIVER };
+    if (!ID_PATTERN.test(driverId)) return invalidIdResponse(res, 'x-driver-id');
+    req.user = { id: String(driverId).toLowerCase(), role: ActorRole.DRIVER };
     return next();
   }
 
   if (passengerId) {
-    // Passenger ids are not format-checked here, to match your teammate's
-    // passengerIdentity. If passenger_id is a UUID column and the id is not
-    // a UUID, errorHandler turns the database error into a 400.
-    req.user = { id: passengerId, role: ActorRole.PASSENGER };
+    req.user = { id: String(passengerId).toLowerCase(), role: ActorRole.PASSENGER };
     return next();
   }
 

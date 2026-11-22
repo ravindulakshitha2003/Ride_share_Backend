@@ -11,7 +11,7 @@ export function requireAuth(req, res, next) {
 
   try {
     const token = authorization.slice(7);
-    console.log("token"+token)
+
     const payload = jwt.verify(token, process.env.JWT_SECRET);
    
     if (!payload.sub) {

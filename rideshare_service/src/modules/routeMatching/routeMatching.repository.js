@@ -141,3 +141,15 @@ export async function findRouteById(routeId) {
     const result = await pool.query(GET_ROUTE_BY_ID, [routeId]);
     return result.rows[0] || null;
 }
+
+export async function updateSeatsById(routeId, delta) {
+  const result = await pool.query(
+    `UPDATE driver_routes
+        SET available_seats = GREATEST(0, available_seats + $2),
+            updated_at = NOW()
+      WHERE route_id = $1
+      RETURNING route_id, available_seats, status`,
+    [routeId, delta]
+  );
+  return result.rows[0] || null;
+}

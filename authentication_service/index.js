@@ -183,6 +183,19 @@ async function startServer() {
     }
 
 
+    // Email settings are needed for sign-up codes and password resets.
+    // Warn instead of stopping, so the rest of the service still runs.
+    const missingMail = ["SMTP_HOST", "SMTP_USER", "SMTP_PASS", "MAIL_FROM"]
+      .filter((key) => !process.env[key]);
+
+    if (missingMail.length) {
+      console.warn(
+        `Email is not configured (missing ${missingMail.join(", ")}). ` +
+        "Sign-up codes and password reset emails will fail."
+      );
+    }
+
+
     // Connect MongoDB
     await mongoose.connect(process.env.MONGO_URI);
 

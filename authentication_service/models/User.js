@@ -64,14 +64,7 @@ const userSchema = new mongoose.Schema(
       required: true,
       select: false,
     },
-    emailVerified: { type: Boolean, default: false },
-    emailOtpHash: { type: String, select: false },
-    emailOtpExpires: { type: Date, select: false },
-    emailOtpAttempts: { type: Number, default: 0, select: false },
-
-    resetOtpHash: { type: String, select: false },
-    resetOtpExpires: { type: Date, select: false },
-    resetOtpAttempts: { type: Number, default: 0, select: false },
+    
   },
   {
     timestamps: true,

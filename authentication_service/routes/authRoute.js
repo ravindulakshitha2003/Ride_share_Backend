@@ -21,10 +21,24 @@ import {
   allowRoles,
 } from "../middleware/authMiddleware.js";
 
-import { verifyEmail 
-        ,resendVerification,
-        forgotPassword,resetPassword} from "../controllers/authController.js";
-import { otpLimiter } from '../middleware/rateLimiters.js';
+import {
+  verifyEmail,
+  resendVerification,
+  forgotPassword,
+  verifyResetCode,
+  resetPassword,
+  sendSignupCode,
+  verifySignupCode,
+} from "../controllers/authController.js";
+import {
+  signupCodeLimiter,
+  verifySignupLimiter,
+  verifyEmailLimiter,
+  resendLimiter,
+  forgotLimiter,
+  verifyResetLimiter,
+  resetPasswordLimiter,
+} from '../middleware/rateLimiters.js';
 
 const router = express.Router();
 
@@ -48,10 +62,23 @@ router.post(
   registerDriverWithVehicle
 );
 
-router.post('/verify-email', verifyEmail);
-router.post('/resend-verification', otpLimiter, resendVerification);
-router.post('/forgot-password', otpLimiter, forgotPassword);
-router.post('/reset-password', otpLimiter, resetPassword);
+// Sign up: confirm the email BEFORE the register form
+//   1. { email }        -> emails a 6-digit code
+//   2. { email, code }  -> { signupToken }, sent with /register or /register-driver
+router.post('/send-signup-code', signupCodeLimiter, sendSignupCode);
+router.post('/verify-signup-code', verifySignupLimiter, verifySignupCode);
+
+// Older flow: verify an existing, unverified account (e.g. after an email change)
+router.post('/verify-email', verifyEmailLimiter, verifyEmail);
+router.post('/resend-verification', resendLimiter, resendVerification);
+
+// Forgot password
+//   1. { email }                    -> emails a 6-digit code
+//   2. { email, code }              -> { resetToken }
+//   3. { resetToken, newPassword }  -> password changed
+router.post('/forgot-password', forgotLimiter, forgotPassword);
+router.post('/verify-reset-code', verifyResetLimiter, verifyResetCode);
+router.post('/reset-password', resetPasswordLimiter, resetPassword);
 
 // View own profile (passengers)
 router.get(

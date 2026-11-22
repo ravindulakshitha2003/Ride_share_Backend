@@ -5,6 +5,22 @@ import cloudinary from "../cloudinary.js";
 import { generateOtp, hashOtp, OTP_TTL_MS, MAX_OTP_ATTEMPTS } from '../utils/otp.js';
 import { sendEmail } from '../utils/email.js';
 import { sendVerificationCode } from "../utils/verification.js";
+import EmailVerification from "../models/EmailVerification.js";
+import {
+  createSignupToken,
+  checkSignupToken,
+  createResetToken,
+  readResetToken,
+  resetTokenMatches,
+} from "../utils/authTokens.js";
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// The app sends "code"; older clients (Postman) may send "otp". Accept both.
+function readCode(body) {
+  const value = body?.code ?? body?.otp;
+  return value === undefined || value === null ? "" : String(value).trim();
+}
 
 function createToken(user) {
   return jwt.sign(
@@ -76,6 +92,7 @@ export async function register(req, res, next) {
       role,
       gender,
       dateOfBirth,
+      signupToken,
     } = req.body ?? {};
 
     // Validate required text fields
@@ -152,6 +169,15 @@ export async function register(req, res, next) {
     ) {
       return res.status(400).json({
         message: "Enter a valid email address",
+      });
+    }
+
+    // The email must have been confirmed with /send-signup-code and
+    // /verify-signup-code first. Checked before the photo upload.
+    if (!checkSignupToken(signupToken, normalizedEmail)) {
+      return res.status(400).json({
+        message: "Please verify your email before registering.",
+        code: "EMAIL_NOT_VERIFIED",
       });
     }
 
@@ -242,25 +268,12 @@ export async function register(req, res, next) {
         : {}),
       profilePhotoUrl: uploadedPhoto.secure_url,
       profilePhotoPublicId: uploadedPhoto.public_id,
+      // Already confirmed by the sign-up code, so no second email is sent.
+      emailVerified: true,
     });
 
-    /*return res.status(201).json({
-      message: "Registration successful",
-      user: publicUser(user),
-      token: createToken(user),
-    });*/
-
-        // A failed email must not undo the registration. The user can
-    // request a new code with /auth/resend-verification.
-    try {
-      await sendVerificationCode(user);
-    } catch (emailError) {
-      console.error("Verification email failed:", emailError.message);
-    }
-
     return res.status(201).json({
-      message:
-        "Registration successful. Check your email for the verification code.",
+      message: "Registration successful. You can now log in.",
       user: publicUser(user),
     });
 
@@ -597,7 +610,8 @@ export async function updateMyAccount(req, res, next) {
 
 export async function verifyEmail(req, res, next) {
   try {
-    const { email, otp } = req.body ?? {};
+    const { email } = req.body ?? {};
+    const otp = readCode(req.body);
 
     if (typeof email !== "string" || !otp) {
       return res.status(400).json({
@@ -724,25 +738,22 @@ export async function forgotPassword(req, res, next) {
   }
 }
 
-export async function resetPassword(req, res, next) {
+// Step 2 of forgot password: check the code and give a short-lived resetToken.
+// The app then sends { resetToken, newPassword } to /reset-password.
+export async function verifyResetCode(req, res, next) {
   try {
-    const { email, otp, newPassword } = req.body ?? {};
+    const { email } = req.body ?? {};
+    const code = readCode(req.body);
 
-    if (
-      typeof email !== "string" ||
-      !otp ||
-      typeof newPassword !== "string" ||
-      newPassword.length < 8
-    ) {
+    if (typeof email !== "string" || !code) {
       return res.status(400).json({
-        message:
-          "Email, code and a new password of at least 8 characters are required",
+        message: "Email and code are required",
       });
     }
 
     const user = await User.findOne({
       email: email.trim().toLowerCase(),
-    }).select("+resetOtpHash +resetOtpExpires +resetOtpAttempts");
+    }).select("+passwordHash +resetOtpHash +resetOtpExpires +resetOtpAttempts");
 
     if (
       !user ||
@@ -760,12 +771,94 @@ export async function resetPassword(req, res, next) {
       });
     }
 
-    if (hashOtp(String(otp).trim()) !== user.resetOtpHash) {
+    if (hashOtp(code) !== user.resetOtpHash) {
       user.resetOtpAttempts += 1;
       await user.save();
       return res.status(400).json({
         message: "Invalid or expired code",
       });
+    }
+
+    // The code is used up; the resetToken takes over from here.
+    user.resetOtpHash = undefined;
+    user.resetOtpExpires = undefined;
+    user.resetOtpAttempts = 0;
+    await user.save();
+
+    return res.status(200).json({
+      message: "Code verified",
+      resetToken: createResetToken(user),
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// Step 3 of forgot password: set the new password.
+// Accepts { resetToken, newPassword } (the app) or the older
+// { email, code/otp, newPassword } (Postman).
+export async function resetPassword(req, res, next) {
+  try {
+    const { email, newPassword, resetToken } = req.body ?? {};
+
+    if (typeof newPassword !== "string" || newPassword.length < 8) {
+      return res.status(400).json({
+        message: "The new password must have at least 8 characters",
+      });
+    }
+
+    let user;
+
+    if (resetToken) {
+      const info = readResetToken(resetToken);
+
+      if (info) {
+        user = await User.findById(info.userId).select("+passwordHash");
+      }
+
+      // Fails if the token is bad, expired, or already used
+      // (the password, and so its fingerprint, has changed since).
+      if (!user || !resetTokenMatches(info.fingerprint, user.passwordHash)) {
+        return res.status(400).json({
+          message: "This reset link has expired. Please request a new code.",
+        });
+      }
+    } else {
+      const otp = readCode(req.body);
+
+      if (typeof email !== "string" || !otp) {
+        return res.status(400).json({
+          message: "Email and code are required",
+        });
+      }
+
+      user = await User.findOne({
+        email: email.trim().toLowerCase(),
+      }).select("+resetOtpHash +resetOtpExpires +resetOtpAttempts");
+
+      if (
+        !user ||
+        !user.resetOtpHash ||
+        user.resetOtpExpires < Date.now()
+      ) {
+        return res.status(400).json({
+          message: "Invalid or expired code",
+        });
+      }
+
+      if (user.resetOtpAttempts >= MAX_OTP_ATTEMPTS) {
+        return res.status(429).json({
+          message: "Too many attempts. Request a new code.",
+        });
+      }
+
+      if (hashOtp(otp) !== user.resetOtpHash) {
+        user.resetOtpAttempts += 1;
+        await user.save();
+        return res.status(400).json({
+          message: "Invalid or expired code",
+        });
+      }
     }
 
     user.passwordHash = await bcrypt.hash(newPassword, 12);
@@ -776,6 +869,107 @@ export async function resetPassword(req, res, next) {
 
     return res.status(200).json({
       message: "Password updated. You can now log in.",
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// Sign up, step 1: email a 6-digit code BEFORE the account exists.
+export async function sendSignupCode(req, res, next) {
+  try {
+    const { email } = req.body ?? {};
+    const normalizedEmail =
+      typeof email === "string" ? email.trim().toLowerCase() : "";
+
+    if (!EMAIL_REGEX.test(normalizedEmail) || normalizedEmail.length > 254) {
+      return res.status(400).json({
+        message: "Enter a valid email address",
+      });
+    }
+
+    if (await User.exists({ email: normalizedEmail })) {
+      return res.status(409).json({
+        message: "This email is already registered. Please log in instead.",
+      });
+    }
+
+    const otp = generateOtp();
+
+    await EmailVerification.findOneAndUpdate(
+      { email: normalizedEmail },
+      {
+        otpHash: hashOtp(otp),
+        expiresAt: new Date(Date.now() + OTP_TTL_MS),
+        attempts: 0,
+      },
+      { upsert: true, setDefaultsOnInsert: true }
+    );
+
+    try {
+      await sendEmail({
+        to: normalizedEmail,
+        subject: "Your Share-Ride verification code",
+        text: `Your verification code is ${otp}. It expires in 15 minutes. If you didn't try to sign up, ignore this email.`,
+      });
+    } catch (emailError) {
+      // Here the code is the only point of the request, so report the failure.
+      console.error("Sign-up code email failed:", emailError.message);
+      return res.status(502).json({
+        message: "We couldn't send the email. Please try again in a moment.",
+      });
+    }
+
+    return res.status(200).json({
+      message: "Verification code sent",
+      retryAfter: 30,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// Sign up, step 2: check the code and give a signupToken for the register form.
+export async function verifySignupCode(req, res, next) {
+  try {
+    const { email } = req.body ?? {};
+    const code = readCode(req.body);
+    const normalizedEmail =
+      typeof email === "string" ? email.trim().toLowerCase() : "";
+
+    if (!normalizedEmail || !code) {
+      return res.status(400).json({
+        message: "Email and code are required",
+      });
+    }
+
+    const record = await EmailVerification.findOne({ email: normalizedEmail });
+
+    if (!record || record.expiresAt < Date.now()) {
+      return res.status(400).json({
+        message: "Invalid or expired code",
+      });
+    }
+
+    if (record.attempts >= MAX_OTP_ATTEMPTS) {
+      return res.status(429).json({
+        message: "Too many attempts. Request a new code.",
+      });
+    }
+
+    if (hashOtp(code) !== record.otpHash) {
+      record.attempts += 1;
+      await record.save();
+      return res.status(400).json({
+        message: "Invalid or expired code",
+      });
+    }
+
+    await record.deleteOne();
+
+    return res.status(200).json({
+      message: "Email verified",
+      signupToken: createSignupToken(normalizedEmail),
     });
   } catch (error) {
     next(error);

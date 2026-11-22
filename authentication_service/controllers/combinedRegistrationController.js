@@ -1,7 +1,6 @@
 import mongoose from "mongoose";
 import bcrypt from "bcrypt";
-//import jwt from "jsonwebtoken";
-import { sendVerificationCode } from "../utils/verification.js";
+import { checkSignupToken } from "../utils/authTokens.js";
 
 import User from "../models/User.js";
 import Driver from "../models/Driver.js";
@@ -18,19 +17,7 @@ function normalizeMobile(value) {
   return mobile;
 }
 
-/*function createToken(user) {
-  return jwt.sign(
-    {
-      name: user.name,
-      role: user.role,
-    },
-    process.env.JWT_SECRET,
-    {
-      subject: user._id.toString(),
-      expiresIn: process.env.JWT_EXPIRES_IN || "1d",
-    }
-  );
-}*/
+
 
 function publicUser(user) {
   return {
@@ -131,6 +118,9 @@ export async function registerDriverWithVehicle(req, res, next) {
       vehicleDescription,
       revenueLicenceExpiry,
       insuranceExpiry,
+
+      // Proof from /verify-signup-code that the email was confirmed
+      signupToken,
     } = req.body ?? {};
 
     // Validate password and confirm password
@@ -217,6 +207,14 @@ export async function registerDriverWithVehicle(req, res, next) {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
       return res.status(400).json({
         message: "Enter a valid email address",
+      });
+    }
+
+    // The email must have been confirmed with the sign-up code first.
+    if (!checkSignupToken(signupToken, normalizedEmail)) {
+      return res.status(400).json({
+        message: "Please verify your email before registering.",
+        code: "EMAIL_NOT_VERIFIED",
       });
     }
 
@@ -389,6 +387,8 @@ export async function registerDriverWithVehicle(req, res, next) {
           ...(parsedDOB ? { dateOfBirth: parsedDOB } : {}),
           profilePhotoUrl: profileImage.secure_url,
           profilePhotoPublicId: profileImage.public_id,
+          // Already confirmed by the sign-up code.
+          emailVerified: true,
         },
       ],
       { session }
@@ -440,19 +440,9 @@ export async function registerDriverWithVehicle(req, res, next) {
     await session.commitTransaction();
     transactionStarted = false;
 
-    // Send the code only after the transaction commits, and catch email
-    // errors here so they can't trigger the cleanup below, which would
-    // delete the photos of an account that was saved successfully.
-    try {
-      user.$session(null); // detach the finished transaction session
-      await sendVerificationCode(user);
-    } catch (emailError) {
-      console.error("Verification email failed:", emailError.message);
-    }
-
     return res.status(201).json({
       message:
-        "Driver account registered. Check your email for the verification code.",
+        "Driver account registered. Your details will be reviewed. You can now log in.",
       user: publicUser(user),
       driver,
       vehicle,

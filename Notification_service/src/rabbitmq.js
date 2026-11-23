@@ -1,4 +1,3 @@
-
 import amqp from "amqplib";
 import { createNotification } from "./services/notificationService.js";
 
@@ -22,7 +21,10 @@ function isValidEvent(event) {
 }
 
 export async function startEventConsumer() {
-  const connection = await amqp.connect(process.env.RABBITMQ_URL);
+  const connection = await amqp.connect(
+    process.env.RABBITMQ_URL
+  );
+
   const channel = await connection.createChannel();
 
   await channel.assertExchange(exchange, "topic", {
@@ -45,19 +47,46 @@ export async function startEventConsumer() {
     async (message) => {
       if (!message) return;
 
+      // Print every received message immediately.
+      console.log("\n====================================");
+      console.log("📩 MESSAGE RECEIVED FROM RABBITMQ");
+      console.log("====================================");
+
+      console.log(
+        "Routing Key:",
+        message.fields.routingKey
+      );
+
+      console.log(
+        "Raw Message:",
+        message.content.toString("utf8")
+      );
+
       let event;
 
       // Parse and validate the incoming event.
       try {
-        event = JSON.parse(message.content.toString("utf8"));
+        event = JSON.parse(
+          message.content.toString("utf8")
+        );
+
+        console.log("Parsed Event:", event);
 
         if (!isValidEvent(event)) {
-          console.error("Invalid notification event:", event);
+          console.error(
+            "❌ Invalid notification event:",
+            event
+          );
+
           channel.nack(message, false, false);
           return;
         }
       } catch (error) {
-        console.error("Invalid event JSON:", error.message);
+        console.error(
+          "❌ Invalid event JSON:",
+          error.message
+        );
+
         channel.nack(message, false, false);
         return;
       }
@@ -74,37 +103,67 @@ export async function startEventConsumer() {
         });
 
         console.log(
-          "Notification saved:",
-          event.eventId,
-          "Routing key:",
+          "✅ Notification saved:",
+          event.eventId
+        );
+
+        console.log(
+          "Routing Key:",
           message.fields.routingKey
         );
 
+        // Acknowledge the message after successful processing.
         channel.ack(message);
+
+        console.log("✅ Message acknowledged");
+        console.log("====================================\n");
       } catch (error) {
         console.error(
-          "Could not save notification:",
+          "❌ Could not save notification:",
           error.message
         );
 
-        // Temporary retry behaviour. A dead-letter/retry
-        // queue should be configured before production use.
+        // Requeue the message for retry.
         channel.nack(message, false, true);
+
+        console.log("🔄 Message requeued");
+        console.log("====================================\n");
       }
     },
-    { noAck: false }
+    {
+      noAck: false,
+    }
   );
 
   console.log(
-    `Listening on exchange "${exchange}"`,
-    `with routing patterns: ${routingPatterns.join(", ")}`
+    `🚀 Notification Service listening on exchange "${exchange}"`
+  );
+
+  console.log(
+    `📌 Routing patterns: ${routingPatterns.join(", ")}`
+  );
+
+  console.log(
+    `📦 Queue: ${queue}`
   );
 
   connection.on("error", (error) => {
-    console.error("RabbitMQ connection error:", error.message);
+    console.error(
+      "RabbitMQ connection error:",
+      error.message
+    );
+  });
+
+  connection.on("close", () => {
+    console.error(
+      "RabbitMQ connection closed"
+    );
   });
 
   channel.on("error", (error) => {
-    console.error("RabbitMQ channel error:", error.message);
+    console.error(
+      "RabbitMQ channel error:",
+      error.message
+    );
   });
 }

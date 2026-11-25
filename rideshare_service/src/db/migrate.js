@@ -1,10 +1,10 @@
-//This code automatically runs pending SQL migration files to create or update 
-// the database structure. It tracks already-applied migrations to avoid 
-// running them again and uses transactions to ensure changes are safely applied.
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import pool from './pool.js';
 
-const fs = require('fs');
-const path = require('path');
-const pool = require('./pool');
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 (async () => {
   await pool.query(`
@@ -13,7 +13,7 @@ const pool = require('./pool');
       applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
     )`);
 
-  const dir = path.join(__dirname, '..', '..', 'migrations');
+  const dir = path.join(__dirname, '..', 'migrations');
   const files = fs.readdirSync(dir).filter((f) => f.endsWith('.sql')).sort();
   const { rows } = await pool.query('SELECT filename FROM schema_migrations');
   const done = new Set(rows.map((r) => r.filename));

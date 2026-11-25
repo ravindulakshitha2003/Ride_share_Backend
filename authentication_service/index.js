@@ -13,6 +13,7 @@ import driverRoutes from "./routes/driverRoute.js";
 import { getMe } from "./controllers/authController.js";
 import { verifyToken } from "./middleware/authMiddleware.js";
 
+
 const app = express();
 
 
@@ -182,6 +183,19 @@ async function startServer() {
     }
 
 
+    // Email settings are needed for sign-up codes and password resets.
+    // Warn instead of stopping, so the rest of the service still runs.
+    const missingMail = ["SMTP_HOST", "SMTP_USER", "SMTP_PASS", "MAIL_FROM"]
+      .filter((key) => !process.env[key]);
+
+    if (missingMail.length) {
+      console.warn(
+        `Email is not configured (missing ${missingMail.join(", ")}). ` +
+        "Sign-up codes and password reset emails will fail."
+      );
+    }
+
+
     // Connect MongoDB
     await mongoose.connect(process.env.MONGO_URI);
 
@@ -189,13 +203,9 @@ async function startServer() {
 
 
     // Start Express server
-    const server = app.listen(PORT, "127.0.0.1", () => {
-
-      console.log(
-        `Identity service running on port ${PORT}`
-      );
-
-    });
+  const server = app.listen(PORT, "0.0.0.0", () => {
+  console.log(`Identity service running on port ${PORT}`);
+});
 
 
     // ======================================

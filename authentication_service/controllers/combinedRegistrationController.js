@@ -1,7 +1,6 @@
-
 import mongoose from "mongoose";
 import bcrypt from "bcrypt";
-import jwt from "jsonwebtoken";
+import { checkSignupToken } from "../utils/authTokens.js";
 
 import User from "../models/User.js";
 import Driver from "../models/Driver.js";
@@ -11,7 +10,6 @@ import cloudinary from "../cloudinary.js";
 function normalizeMobile(value) {
   const mobile = String(value || "").trim();
 
-  // Normalize Sri Lankan local mobile numbers.
   if (/^0\d{9}$/.test(mobile)) {
     return `+94${mobile.slice(1)}`;
   }
@@ -19,19 +17,7 @@ function normalizeMobile(value) {
   return mobile;
 }
 
-function createToken(user) {
-  return jwt.sign(
-    {
-      name: user.name,
-      role: user.role,
-    },
-    process.env.JWT_SECRET,
-    {
-      subject: user._id.toString(),
-      expiresIn: process.env.JWT_EXPIRES_IN || "1d",
-    }
-  );
-}
+
 
 function publicUser(user) {
   return {
@@ -40,6 +26,7 @@ function publicUser(user) {
     mobile: user.mobile,
     email: user.email,
     role: user.role,
+    emailVerified: user.emailVerified ?? false,
     gender: user.gender,
     dateOfBirth: user.dateOfBirth
       ? user.dateOfBirth.toISOString()
@@ -104,6 +91,7 @@ export async function registerDriverWithVehicle(req, res, next) {
       mobile,
       email,
       password,
+      confirmPassword,
       gender,
       dateOfBirth,
 
@@ -122,6 +110,7 @@ export async function registerDriverWithVehicle(req, res, next) {
       model,
       year,
       color,
+      plateNumber,
       crNumber,
       passengerSeats,
       airConditioning,
@@ -129,9 +118,36 @@ export async function registerDriverWithVehicle(req, res, next) {
       vehicleDescription,
       revenueLicenceExpiry,
       insuranceExpiry,
-    } = req.body;
 
-    // Both images are required.
+      // Proof from /verify-signup-code that the email was confirmed
+      signupToken,
+    } = req.body ?? {};
+
+    // Validate password and confirm password
+    if (
+      typeof password !== "string" ||
+      !password ||
+      typeof confirmPassword !== "string" ||
+      !confirmPassword
+    ) {
+      return res.status(400).json({
+        message: "Password and confirm password are required",
+      });
+    }
+
+    if (password !== confirmPassword) {
+      return res.status(400).json({
+        message: "Password and confirm password do not match",
+      });
+    }
+
+    if (password.length < 8) {
+      return res.status(400).json({
+        message: "Password must contain at least 8 characters",
+      });
+    }
+
+    // Both images are required
     const profilePhoto = req.files?.profilePhoto?.[0];
     const vehiclePhoto = req.files?.vehiclePhoto?.[0];
 
@@ -139,7 +155,6 @@ export async function registerDriverWithVehicle(req, res, next) {
       name,
       mobile,
       email,
-      password,
       nicNumber,
       drivingLicenceNumber,
       licenceClass,
@@ -152,6 +167,7 @@ export async function registerDriverWithVehicle(req, res, next) {
       model,
       year,
       color,
+      plateNumber,
       crNumber,
       passengerSeats,
       luggageSpace,
@@ -187,18 +203,29 @@ export async function registerDriverWithVehicle(req, res, next) {
     const normalizedEmail = String(email).trim().toLowerCase();
     const normalizedMobile = normalizeMobile(mobile);
 
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
-  return res.status(400).json({
-    message: "Enter a valid email address",
-  });
-    }
-
-    if (String(password).length < 8) {
+    // Validate email
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
       return res.status(400).json({
-        message: "Password must contain at least 8 characters",
+        message: "Enter a valid email address",
       });
     }
 
+    // The email must have been confirmed with the sign-up code first.
+    if (!checkSignupToken(signupToken, normalizedEmail)) {
+      return res.status(400).json({
+        message: "Please verify your email before registering.",
+        code: "EMAIL_NOT_VERIFIED",
+      });
+    }
+
+    // Validate Sri Lankan mobile number
+    if (!/^(?:0\d{9}|\+94\d{9})$/.test(String(mobile).trim())) {
+      return res.status(400).json({
+        message: "Enter a valid Sri Lankan mobile number",
+      });
+    }
+
+    // Validate optional date of birth
     const parsedDOB = dateOfBirth ? parseDate(dateOfBirth) : null;
 
     if (dateOfBirth && !parsedDOB) {
@@ -240,11 +267,15 @@ export async function registerDriverWithVehicle(req, res, next) {
     const ac = String(airConditioning ?? "false").toLowerCase();
 
     if (!["car", "van", "suv", "other"].includes(normalizedVehicleType)) {
-      return res.status(400).json({ message: "Invalid vehicle type" });
+      return res.status(400).json({
+        message: "Invalid vehicle type",
+      });
     }
 
     if (!["available", "limited", "unavailable"].includes(normalizedLuggage)) {
-      return res.status(400).json({ message: "Invalid luggage space option" });
+      return res.status(400).json({
+        message: "Invalid luggage space option",
+      });
     }
 
     if (!["true", "false"].includes(ac)) {
@@ -261,20 +292,28 @@ export async function registerDriverWithVehicle(req, res, next) {
       parsedYear < 1900 ||
       parsedYear > new Date().getFullYear() + 1
     ) {
-      return res.status(400).json({ message: "Invalid vehicle year" });
+      return res.status(400).json({
+        message: "Invalid vehicle year",
+      });
     }
 
-    if (!Number.isInteger(parsedSeats) || parsedSeats < 1 || parsedSeats > 100) {
+    if (
+      !Number.isInteger(parsedSeats) ||
+      parsedSeats < 1 ||
+      parsedSeats > 100
+    ) {
       return res.status(400).json({
         message: "Passenger seats must be a whole number between 1 and 100",
       });
     }
 
-    // Check common duplicates before uploading photos.
+    // Normalize driver and vehicle identification numbers
     const normalizedNIC = String(nicNumber).trim();
     const normalizedLicence = String(drivingLicenceNumber).trim();
     const normalizedCR = String(crNumber).trim().toUpperCase();
+    const normalizedPlateNumber = String(plateNumber).trim().toUpperCase();
 
+    // Check duplicates before uploading photos
     const [existingUser, existingDriver, existingVehicle] =
       await Promise.all([
         User.findOne({
@@ -283,13 +322,20 @@ export async function registerDriverWithVehicle(req, res, next) {
             { mobile: normalizedMobile },
           ],
         }),
+
         Driver.findOne({
           $or: [
             { nicNumber: normalizedNIC },
             { drivingLicenceNumber: normalizedLicence },
           ],
         }),
-        Vehicle.findOne({ crNumber: normalizedCR }),
+
+        Vehicle.findOne({
+          $or: [
+            { crNumber: normalizedCR },
+            { plateNumber: normalizedPlateNumber },
+          ],
+        }),
       ]);
 
     if (existingUser) {
@@ -306,11 +352,11 @@ export async function registerDriverWithVehicle(req, res, next) {
 
     if (existingVehicle) {
       return res.status(409).json({
-        message: "Vehicle registration number is already registered",
+        message: "Vehicle registration number or plate number is already registered",
       });
     }
 
-    // Upload images. These uploads are outside the MongoDB transaction.
+    // Upload images
     const [profileImage, vehicleImage] = await Promise.all([
       uploadPhoto(profilePhoto, "share-ride/profiles"),
       uploadPhoto(vehiclePhoto, "share-ride/vehicles"),
@@ -321,12 +367,14 @@ export async function registerDriverWithVehicle(req, res, next) {
       vehicleImage.public_id
     );
 
+    // Hash password only
     const passwordHash = await bcrypt.hash(password, 12);
 
-    // MongoDB transactions require a replica set or supported sharded cluster.
+    // Start MongoDB transaction
     session.startTransaction();
     transactionStarted = true;
 
+    // Create User
     const [user] = await User.create(
       [
         {
@@ -339,11 +387,14 @@ export async function registerDriverWithVehicle(req, res, next) {
           ...(parsedDOB ? { dateOfBirth: parsedDOB } : {}),
           profilePhotoUrl: profileImage.secure_url,
           profilePhotoPublicId: profileImage.public_id,
+          // Already confirmed by the sign-up code.
+          emailVerified: true,
         },
       ],
       { session }
     );
 
+    // Create Driver
     const [driver] = await Driver.create(
       [
         {
@@ -361,6 +412,7 @@ export async function registerDriverWithVehicle(req, res, next) {
       { session }
     );
 
+    // Create Vehicle
     const [vehicle] = await Vehicle.create(
       [
         {
@@ -370,6 +422,7 @@ export async function registerDriverWithVehicle(req, res, next) {
           model: String(model).trim(),
           year: parsedYear,
           color: String(color).trim(),
+          plateNumber: normalizedPlateNumber,
           crNumber: normalizedCR,
           passengerSeats: parsedSeats,
           airConditioning: ac === "true",
@@ -388,12 +441,13 @@ export async function registerDriverWithVehicle(req, res, next) {
     transactionStarted = false;
 
     return res.status(201).json({
-      message: "Driver account and vehicle registered successfully",
-      token: createToken(user),
+      message:
+        "Driver account registered. Your details will be reviewed. You can now log in.",
       user: publicUser(user),
       driver,
       vehicle,
     });
+
   } catch (error) {
     if (transactionStarted) {
       try {
@@ -408,12 +462,19 @@ export async function registerDriverWithVehicle(req, res, next) {
     }
 
     if (error.code === 11000) {
+      console.error("DUPLICATE KEY ERROR:", error);
+      console.error("DUPLICATE FIELD:", error.keyPattern);
+      console.error("DUPLICATE VALUE:", error.keyValue);
+
       return res.status(409).json({
-        message: "A unique value such as email, mobile, NIC, licence or CR number is already registered",
+        message: "Duplicate value detected",
+        field: error.keyPattern,
+        value: error.keyValue,
       });
     }
 
     next(error);
+
   } finally {
     await session.endSession();
   }

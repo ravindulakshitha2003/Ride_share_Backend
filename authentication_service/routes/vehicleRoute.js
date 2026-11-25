@@ -7,6 +7,10 @@ import {
   getVehiclesByDriverId,
   deleteMyVehicle,
   updateMyVehicle,
+<<<<<<< HEAD
+=======
+
+>>>>>>> ec76644f732384e4985bc5fb60f487af9a4e6d16
 } from "../controllers/vehicleController.js";
 
 import {
@@ -40,9 +44,14 @@ router.post(
 router.get("/me", getMyVehicles);
 
 //Update an existing vehicle.
+<<<<<<< HEAD
 router.put("/:id",  upload.single("vehiclePhoto"),updateMyVehicle);
+=======
+router.put("/:id",  upload.single("vehiclePhoto"), updateMyVehicle);
+>>>>>>> ec76644f732384e4985bc5fb60f487af9a4e6d16
 
 // Delete a vehicle belonging to the logged-in driver.
 router.delete("/:id", deleteMyVehicle);
 
 export default router;
+

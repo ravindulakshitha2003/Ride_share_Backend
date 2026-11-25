@@ -43,7 +43,13 @@ const vehicleSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
-
+    plateNumber: {
+      type: String,
+      required: true,
+      unique: true,
+      trim: true,
+      uppercase: true,
+    },
 
 
     passengerSeats: {

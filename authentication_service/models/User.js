@@ -64,7 +64,22 @@ const userSchema = new mongoose.Schema(
       required: true,
       select: false,
     },
-    
+
+    // True once the email has been confirmed with a code.
+    emailVerified: {
+      type: Boolean,
+      default: false,
+    },
+
+    // Email verification code (existing, unverified accounts)
+    emailOtpHash: { type: String, select: false },
+    emailOtpExpires: { type: Date, select: false },
+    emailOtpAttempts: { type: Number, default: 0, select: false },
+
+    // Forgot-password code
+    resetOtpHash: { type: String, select: false },
+    resetOtpExpires: { type: Date, select: false },
+    resetOtpAttempts: { type: Number, default: 0, select: false },
   },
   {
     timestamps: true,

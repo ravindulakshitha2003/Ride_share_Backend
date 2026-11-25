@@ -74,7 +74,7 @@ export async function getRideById(rideId) {
 function normaliseRide(rideId, body) {
   const ride = body?.data ?? body;
   const driverId = ride?.driverId ?? ride?.driver_id;
-  const totalSeats = ride?.totalSeats ?? ride?.total_seats ?? ride?.seats;
+  const totalSeats = ride?.totalSeats ?? ride?.total_seats ?? ride?.seats ?? ride?.available_seats;
 
   if (!driverId) {
     throw new HttpError(502, 'Ride service returned a ride without a driver', {
@@ -88,4 +88,33 @@ function normaliseRide(rideId, body) {
     // null = "unknown" -> the seat-capacity check on accept is skipped.
     totalSeats: Number.isFinite(Number(totalSeats)) ? Number(totalSeats) : null,
   };
+}
+
+/**
+ * Decrement or restore available_seats on a ride.
+ * delta = -N (take N seats) or +N (free N seats back)
+ */
+export async function updateRideSeats(rideId, delta) {
+  const baseUrl = process.env.RIDE_SERVICE_URL;
+  if (!baseUrl) {
+    console.warn('[rideServiceClient] RIDE_SERVICE_URL not set – skipping seat update');
+    return;
+  }
+  try {
+    const response = await fetch(
+      `${baseUrl}/api/v1/rides/${encodeURIComponent(rideId)}/seats`,
+      {
+        method: 'PATCH',
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ delta }),
+      }
+    );
+    if (!response.ok) {
+      console.error('[rideServiceClient] seat update failed:', response.status);
+    }
+  } catch (err) {
+    // Non-fatal – seat count might be slightly stale but booking is confirmed
+    console.error('[rideServiceClient] seat update error:', err.message);
+  }
 }

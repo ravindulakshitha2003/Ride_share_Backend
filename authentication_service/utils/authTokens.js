@@ -59,6 +59,37 @@ export function readResetToken(token) {
   }
 }
 
+// Given by /google when a Google account has no Share-Ride account yet.
+// It carries the verified Google details so /google/complete can create
+// the account after the user adds a mobile number.
+const GOOGLE_SIGNUP_TOKEN_TTL = "30m";
+
+export function createGoogleSignupToken({ googleId, email, name, picture }) {
+  return jwt.sign(
+    { purpose: "google-signup", email, name, picture },
+    process.env.JWT_SECRET,
+    { subject: googleId, expiresIn: GOOGLE_SIGNUP_TOKEN_TTL }
+  );
+}
+
+// Returns { googleId, email, name, picture } or null if not valid.
+export function readGoogleSignupToken(token) {
+  if (typeof token !== "string" || !token) return null;
+
+  try {
+    const payload = jwt.verify(token, process.env.JWT_SECRET);
+    if (payload.purpose !== "google-signup" || !payload.sub) return null;
+    return {
+      googleId: payload.sub,
+      email: payload.email,
+      name: payload.name,
+      picture: payload.picture,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function resetTokenMatches(fingerprint, passwordHash) {
   return fingerprint === passwordFingerprint(passwordHash);
 }

@@ -1,6 +1,7 @@
 import { publishEvent } from '../config/rabbitmq.js';
 import { createBooking } from '../services/bookingService.js';
 import { createBookingSchema } from '../validators/bookingValidator.js';
+import { getRideById } from '../clients/rideServiceClient.js';
 
 export async function createBookingController(req, res, next) {
   try {
@@ -18,11 +19,18 @@ export async function createBookingController(req, res, next) {
       });
     }
 
+    parsed.data.driverId= req.body.driverId;
+  
     // 1. Create booking in PostgreSQL
     const booking = await createBooking(
       req.user.id,
       parsed.data
     );
+
+
+
+    const ride = await getRideById(parsed.data.rideId);
+    
 
     // 2. Prepare the notification event
     const bookingCreatedEvent = {
@@ -33,11 +41,13 @@ export async function createBookingController(req, res, next) {
       data: {
         bookingId: booking.booking_id,
         passengerId: booking.passenger_id,
+        recipientUserId:ride.driverId,
         rideId: booking.ride_id,
         requestedSeats: booking.requested_seats,
         note: booking.note,
         status: booking.status,
         createdAt: booking.created_at,
+        title : "REQUEST"
       },
     };
 
@@ -45,6 +55,11 @@ export async function createBookingController(req, res, next) {
     try {
       await publishEvent(
         'booking.created',
+        bookingCreatedEvent
+      );
+      
+       await publishEvent(
+        'ride.request',
         bookingCreatedEvent
       );
 
@@ -59,6 +74,7 @@ export async function createBookingController(req, res, next) {
         rabbitMQError
       );
     }
+    
 
     // 4. Return response to frontend
     return res.status(201).json({

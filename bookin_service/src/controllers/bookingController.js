@@ -4,7 +4,7 @@ import { createBookingSchema } from '../validators/bookingValidator.js';
 
 export async function createBookingController(req, res, next) {
   try {
-     console.log(req.body.driver_id)
+     
     const parsed = createBookingSchema.safeParse(req.body);
    
     if (!parsed.success) {

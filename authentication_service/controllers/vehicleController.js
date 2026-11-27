@@ -259,7 +259,7 @@ export async function getMyVehicles(req, res, next) {
 
 // Get driver data to the other users (ride details + driver details).
 export async function getdriverVehicles(req, res, next) {
-  console.log(req.body);
+
   try {
     const { driverID, vehicalID } = req.body;
 

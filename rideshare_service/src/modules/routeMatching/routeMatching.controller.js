@@ -33,7 +33,9 @@ export const publishRoute = asyncHandler(async (req, res) => {
 
 export const searchMatchingRoutes = asyncHandler(async (req, res) => {
   const data = await searchRoutes(req.body);
-  console.log(data);
+
+
+    console.log(data);
 
   res.status(200).json({
     success: true,

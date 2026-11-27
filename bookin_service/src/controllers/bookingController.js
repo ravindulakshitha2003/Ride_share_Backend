@@ -1,10 +1,20 @@
 import { publishEvent } from '../config/rabbitmq.js';
 import { createBooking } from '../services/bookingService.js';
 import { createBookingSchema } from '../validators/bookingValidator.js';
-import { getRideById } from '../clients/rideServiceClient.js';
+
 
 export async function createBookingController(req, res, next) {
   try {
+
+    
+
+
+     if(req.body.driverId ==req.user.id) {
+      return res.status(400).json({
+        success: false,
+        message: 'cannot booking  your own ride '
+      })}
+    
      
     const parsed = createBookingSchema.safeParse(req.body);
    
@@ -52,7 +62,7 @@ export async function createBookingController(req, res, next) {
 
     // 3. Publish event to RabbitMQ
     try {
-      console.log(bookingCreatedEvent)
+     
       await publishEvent(
         'booking.created',
         bookingCreatedEvent

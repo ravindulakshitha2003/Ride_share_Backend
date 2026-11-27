@@ -29,7 +29,6 @@ export async function createBookingController(req, res, next) {
 
 
 
-    const ride = await getRideById(parsed.data.rideId);
     
 
     // 2. Prepare the notification event
@@ -41,7 +40,7 @@ export async function createBookingController(req, res, next) {
       data: {
         bookingId: booking.booking_id,
         passengerId: booking.passenger_id,
-        recipientUserId:ride.driverId,
+        recipientUserId:  parsed.data.driverId,
         rideId: booking.ride_id,
         requestedSeats: booking.requested_seats,
         note: booking.note,
@@ -53,6 +52,7 @@ export async function createBookingController(req, res, next) {
 
     // 3. Publish event to RabbitMQ
     try {
+      console.log(bookingCreatedEvent)
       await publishEvent(
         'booking.created',
         bookingCreatedEvent
@@ -80,14 +80,16 @@ export async function createBookingController(req, res, next) {
     return res.status(201).json({
       success: true,
       message: 'Booking request created successfully',
-      data: {
+     data: {
         bookingId: booking.booking_id,
         passengerId: booking.passenger_id,
+        recipientUserId: booking.driverId,
         rideId: booking.ride_id,
         requestedSeats: booking.requested_seats,
         note: booking.note,
         status: booking.status,
         createdAt: booking.created_at,
+        title : "REQUEST"
       },
     });
   } catch (error) {

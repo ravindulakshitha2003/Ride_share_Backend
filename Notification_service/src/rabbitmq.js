@@ -12,6 +12,7 @@ const routingPatterns = ['ride.*', 'booking.*'];
 
 // EXISTING VALIDATION - KEEP UNCHANGED
 function isValidEvent(event) {
+
   return (
     event &&
     typeof event.eventId === 'string' &&
@@ -23,6 +24,7 @@ function isValidEvent(event) {
 
 // ADDITIONAL VALIDATION FOR BOOKING.CREATED
 function isValidBookingEvent(event) {
+
   return (
     event &&
     typeof event.eventId === 'string' &&

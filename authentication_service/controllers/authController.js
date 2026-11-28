@@ -22,7 +22,7 @@ function readCode(body) {
   return value === undefined || value === null ? "" : String(value).trim();
 }
 
-function createToken(user) {
+export function createToken(user) {
   return jwt.sign(
     {
       name: user.name,
@@ -36,7 +36,7 @@ function createToken(user) {
   );
 }
 
-function publicUser(user) {
+export function publicUser(user) {
   return {
     id: user._id.toString(),
     name: user.name,
@@ -48,10 +48,11 @@ function publicUser(user) {
       ? user.dateOfBirth.toISOString().slice(0, 10)
       : null,
     profilePhotoUrl: user.profilePhotoUrl ?? null,
+    authProvider: user.authProvider ?? "local",
   };
 }
 
-function normalizeMobile(mobile) {
+export function normalizeMobile(mobile) {
   return mobile.startsWith("0")
     ? `+94${mobile.slice(1)}`
     : mobile;
@@ -320,6 +321,14 @@ export async function login(req, res, next) {
       email: email.trim().toLowerCase(),
     }).select("+passwordHash");
 
+    // Account made with Google and no password set yet.
+    if (user && !user.passwordHash) {
+      return res.status(401).json({
+        message: "This account uses Google sign-in. Tap \"Continue with Google\".",
+        code: "USE_GOOGLE_SIGNIN",
+      });
+    }
+
     if (
       !user ||
       !(await bcrypt.compare(password, user.passwordHash))
@@ -385,6 +394,15 @@ export async function deleteMyAccount(req, res, next) {
 
     // Require password confirmation before deleting the account.
     const { password } = req.body ?? {};
+
+    // Google-only accounts have no password to confirm with.
+    // They can set one with "Forgot password" first.
+    if (!user.passwordHash) {
+      return res.status(400).json({
+        message: "Set a password first (use Forgot password), then delete your account.",
+        code: "NO_PASSWORD_SET",
+      });
+    }
 
     if (typeof password !== "string" || !password) {
       return res.status(400).json({

@@ -18,6 +18,14 @@ export function verifyToken(req, res, next) {
       process.env.JWT_SECRET
     );
 
+    // Signup / reset / google-signup tokens carry a "purpose" and
+    // must never work as a login token.
+    if (payload.purpose) {
+      return res.status(401).json({
+        message: "Invalid or expired authentication token",
+      });
+    }
+
     req.user = {
       id: payload.sub,
       name: payload.name,

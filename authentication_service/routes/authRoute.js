@@ -38,7 +38,12 @@ import {
   forgotLimiter,
   verifyResetLimiter,
   resetPasswordLimiter,
+  googleLimiter,
 } from '../middleware/rateLimiters.js';
+import {
+  googleLogin,
+  googleCompleteSignup,
+} from "../controllers/googleAuthController.js";
 
 const router = express.Router();
 
@@ -51,6 +56,12 @@ router.post(
 
 // Login for passengers and drivers
 router.post("/login", login);
+
+// Google sign-in
+//   1. { idToken }  -> logs in, or { needsProfile, googleSignupToken }
+//   2. { googleSignupToken, mobile, ... } -> creates the account, logs in
+router.post("/google", googleLimiter, googleLogin);
+router.post("/google/complete", googleLimiter, googleCompleteSignup);
 
 // Driver registration: account + driver details + vehicle details
 router.post(

@@ -25,10 +25,29 @@ const userSchema = new mongoose.Schema(
       maxlength: 254,
     },
 
+    // Google-only accounts have no password, so it is required only
+    // when the account is not linked to Google.
     passwordHash: {
       type: String,
-      required: true,
+      required() {
+        return !this.googleId;
+      },
       select: false,
+    },
+
+    // Google account id (the "sub" claim of the Google ID token).
+    // sparse: lets many email/password users have no googleId.
+    googleId: {
+      type: String,
+      unique: true,
+      sparse: true,
+    },
+
+    // How the account was first created.
+    authProvider: {
+      type: String,
+      enum: ["local", "google"],
+      default: "local",
     },
 
     role: {
@@ -59,9 +78,13 @@ const userSchema = new mongoose.Schema(
       trim: true,
     },
 
+    // Not set when the photo is the Google profile picture
+    // (it is not stored in Cloudinary).
     profilePhotoPublicId: {
       type: String,
-      required: true,
+      required() {
+        return !this.googleId;
+      },
       select: false,
     },
 

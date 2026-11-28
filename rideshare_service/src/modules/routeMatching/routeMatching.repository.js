@@ -10,67 +10,148 @@ export async function saveSelectedDriverRoute(routeData, createEvent) {
         // 1. Save the main route in driver_routes
         const routeQuery = `
             INSERT INTO driver_routes (
-                driver_id, vehicle_id,
-                origin_name, origin_latitude, origin_longitude,
-                destination_name, destination_latitude, destination_longitude,
-                route_line, distance_meters, duration_seconds,
-                departure_at, available_seats,
-                price_per_seat, currency, status,
-                ride_preferences, max_passenger_waiting_minutes
+                driver_id,
+                driver_name,
+                vehicle_id,
+
+                origin_name,
+                origin_latitude,
+                origin_longitude,
+
+                destination_name,
+                destination_latitude,
+                destination_longitude,
+
+                route_line,
+                distance_meters,
+                duration_seconds,
+
+                departure_at,
+                available_seats,
+
+                price_per_seat,
+                currency,
+                status,
+
+                ride_preferences,
+                max_passenger_waiting_minutes,
+
+                no_of_requests,
+                no_of_bookings
             )
             VALUES (
-                $1, $2, $3, $4, $5, $6, $7, $8,
-                ST_SetSRID(ST_GeomFromGeoJSON($9), 4326),
-                $10, $11, $12, $13, $14, $15, 'PUBLISHED',
-                $16::jsonb, $17
+                $1, $2, $3,
+                $4, $5, $6,
+                $7, $8, $9,
+                ST_SetSRID(ST_GeomFromGeoJSON($10), 4326),
+                $11, $12,
+                $13, $14,
+                $15, $16, 'PUBLISHED',
+                $17::jsonb, $18,
+                $19, $20
             )
-            RETURNING route_id, driver_id, vehicle_id,
-                origin_name, origin_latitude, origin_longitude,
-                destination_name, destination_latitude, destination_longitude,
+            RETURNING
+                route_id,
+                driver_id,
+                driver_name,
+                vehicle_id,
+
+                origin_name,
+                origin_latitude,
+                origin_longitude,
+
+                destination_name,
+                destination_latitude,
+                destination_longitude,
+
                 ST_AsGeoJSON(route_line)::json AS route_geometry,
-                distance_meters, duration_seconds,
-                departure_at, available_seats, price_per_seat, currency,
-                ride_preferences, max_passenger_waiting_minutes,
-                status, created_at;
+
+                distance_meters,
+                duration_seconds,
+                departure_at,
+                available_seats,
+
+                price_per_seat,
+                currency,
+
+                ride_preferences,
+                max_passenger_waiting_minutes,
+
+                no_of_requests,
+                no_of_bookings,
+
+                status,
+                created_at;
         `;
 
         const routeValues = [
             routeData.driverId,
+            routeData.driverName,
             routeData.vehicleId,
+
             routeData.originName,
             routeData.originLatitude,
             routeData.originLongitude,
+
             routeData.destinationName,
             routeData.destinationLatitude,
             routeData.destinationLongitude,
+
             JSON.stringify(routeData.geometry),
+
             routeData.distanceMeters,
             routeData.durationSeconds,
+
             routeData.departureAt,
             routeData.availableSeats,
+
             routeData.pricePerSeat,
             routeData.currency,
+
             JSON.stringify(routeData.ridePreferences || {}),
-            routeData.maxPassengerWaitingMinutes || 5
+            routeData.maxPassengerWaitingMinutes ?? 5,
+
+            0,
+            0
         ];
 
         const result = await client.query(routeQuery, routeValues);
         const savedRide = result.rows[0];
 
-        // 2. Save 0, 1, or many intermediate stops in driver_route_stops
+        // 2. Save intermediate stops
         const savedStops = [];
-        if (Array.isArray(routeData.intermediateStops) && routeData.intermediateStops.length > 0) {
+
+        if (
+            Array.isArray(routeData.intermediateStops) &&
+            routeData.intermediateStops.length > 0
+        ) {
             for (let i = 0; i < routeData.intermediateStops.length; i++) {
                 const stop = routeData.intermediateStops[i];
+
                 const stopQuery = `
                     INSERT INTO driver_route_stops (
-                        route_id, stop_order, location, reason,
-                        arrival_time, duration_minutes, description, flexible_time
+                        route_id,
+                        stop_order,
+                        location,
+                        reason,
+                        arrival_time,
+                        duration_minutes,
+                        description,
+                        flexible_time
                     )
                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-                    RETURNING stop_id, route_id, stop_order, location, reason,
-                              arrival_time, duration_minutes, description, flexible_time;
+                    RETURNING
+                        stop_id,
+                        route_id,
+                        stop_order,
+                        location,
+                        reason,
+                        arrival_time,
+                        duration_minutes,
+                        description,
+                        flexible_time;
                 `;
+
                 const stopValues = [
                     savedRide.route_id,
                     i + 1,
@@ -81,13 +162,15 @@ export async function saveSelectedDriverRoute(routeData, createEvent) {
                     stop.description || null,
                     Boolean(stop.flexibleTime)
                 ];
+
                 const stopRes = await client.query(stopQuery, stopValues);
                 savedStops.push(stopRes.rows[0]);
             }
         }
+
         savedRide.intermediate_stops = savedStops;
 
-        // 3. Build the notification event
+        // 3. Build notification event
         const event = createEvent(savedRide);
 
         // 4. Save event in Outbox table
@@ -100,7 +183,7 @@ export async function saveSelectedDriverRoute(routeData, createEvent) {
                 routing_key,
                 payload
             )
-            VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+            VALUES ($1, $2, $3, $4, $5, $6::jsonb);
         `;
 
         await client.query(outboxQuery, [
@@ -121,9 +204,14 @@ export async function saveSelectedDriverRoute(routeData, createEvent) {
         try {
             await client.query('ROLLBACK');
         } catch (rollbackError) {
-            console.error('Transaction rollback failed:', rollbackError.message);
+            console.error(
+                'Transaction rollback failed:',
+                rollbackError.message
+            );
         }
+
         throw error;
+
     } finally {
         client.release();
     }

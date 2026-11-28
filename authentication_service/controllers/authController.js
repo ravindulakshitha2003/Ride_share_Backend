@@ -329,12 +329,12 @@ export async function login(req, res, next) {
       });
     }
 
-   if (!user.emailVerified) {
-      return res.status(403).json({
-        message: "Please verify your email first",
-        code: "EMAIL_NOT_VERIFIED",
-      });
-    }
+  //  if (!user.emailVerified) {
+  //     return res.status(403).json({
+  //       message: "Please verify your email first",
+  //       code: "EMAIL_NOT_VERIFIED",
+  //     });
+  //   }
 
     return res.status(200).json({
       message: "Login successful",
@@ -895,6 +895,7 @@ export async function sendSignupCode(req, res, next) {
     }
 
     const otp = generateOtp();
+    console.log(otp)
 
     await EmailVerification.findOneAndUpdate(
       { email: normalizedEmail },
@@ -912,6 +913,7 @@ export async function sendSignupCode(req, res, next) {
         subject: "Your Share-Ride verification code",
         text: `Your verification code is ${otp}. It expires in 15 minutes. If you didn't try to sign up, ignore this email.`,
       });
+      console.log("send");
     } catch (emailError) {
       // Here the code is the only point of the request, so report the failure.
       console.error("Sign-up code email failed:", emailError.message);

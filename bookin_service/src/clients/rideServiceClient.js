@@ -33,7 +33,7 @@ export async function getRideById(rideId) {
     return {
       rideId,
       // Must be a UUID because driver_id is a UUID column in your database.
-      driverId: (process.env.DEV_DRIVER_ID || '11111111-1111-4111-8111-111111111111').toLowerCase(),
+      // driverId: , <--- i will use another method
       totalSeats: Number(process.env.DEV_RIDE_TOTAL_SEATS || 4),
     };
   }

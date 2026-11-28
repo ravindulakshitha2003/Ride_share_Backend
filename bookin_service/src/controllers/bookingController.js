@@ -5,8 +5,20 @@ import { publishEvent } from '../config/rabbitmq.js';
 import { createBooking } from '../services/bookingService.js';
 import { createBookingSchema } from '../validators/bookingValidator.js';
 
+
 export async function createBookingController(req, res, next) {
   try {
+
+    
+
+
+     if(req.body.driverId ==req.user.id) {
+      return res.status(400).json({
+        success: false,
+        message: 'cannot booking  your own ride '
+      })}
+    
+     
     const parsed = createBookingSchema.safeParse(req.body);
 
     if (!parsed.success) {
@@ -20,6 +32,8 @@ export async function createBookingController(req, res, next) {
       });
     }
 
+    parsed.data.driverId= req.body.driverId;
+  
     // 1. Create booking in PostgreSQL
     const booking = await createBooking(
       req.user.id,
@@ -41,6 +55,13 @@ export async function createBookingController(req, res, next) {
     // 3. Prepare passenger notification
     const passengerEvent = {
       eventId: randomUUID(),
+
+
+    
+
+    // 2. Prepare the notification event
+    const bookingCreatedEvent = {
+      eventId: crypto.randomUUID(),
       eventType: 'booking.created',
       timestamp: new Date().toISOString(),
       recipientUserId: String(booking.passenger_id),
@@ -58,6 +79,17 @@ export async function createBookingController(req, res, next) {
       title: 'New Booking Request',
       body: 'A passenger has requested to join your ride. Review the booking request.',
       data: bookingData,
+      data: {
+        bookingId: booking.booking_id,
+        passengerId: booking.passenger_id,
+        recipientUserId:  parsed.data.driverId,
+        rideId: booking.ride_id,
+        requestedSeats: booking.requested_seats,
+        note: booking.note,
+        status: booking.status,
+        createdAt: booking.created_at,
+        title : "REQUEST"
+      },
     };
 
     // 5. Publish passenger notification
@@ -67,6 +99,16 @@ export async function createBookingController(req, res, next) {
     } catch (error) {
       console.error('Failed to publish passenger notification:', error.message);
     }
+     
+      await publishEvent(
+        'booking.created',
+        bookingCreatedEvent
+      );
+      
+       await publishEvent(
+        'ride.request',
+        bookingCreatedEvent
+      );
 
     // 6. Publish driver notification
     try {
@@ -75,20 +117,23 @@ export async function createBookingController(req, res, next) {
     } catch (error) {
       console.error('Failed to publish driver notification:', error.message);
     }
+    
 
     // 7. Return response
     return res.status(201).json({
       success: true,
       message: 'Booking request created successfully',
-      data: {
+     data: {
         bookingId: booking.booking_id,
         passengerId: booking.passenger_id,
         driverId: booking.driver_id,
+        recipientUserId: booking.driverId,
         rideId: booking.ride_id,
         requestedSeats: booking.requested_seats,
         note: booking.note,
         status: booking.status,
         createdAt: booking.created_at,
+        title : "REQUEST"
       },
     });
 

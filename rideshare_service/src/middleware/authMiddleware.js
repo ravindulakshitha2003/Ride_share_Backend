@@ -23,6 +23,7 @@ export function authenticateToken(req, res, next) {
         );
 
         req.user = decoded;
+        
 
         next();
 

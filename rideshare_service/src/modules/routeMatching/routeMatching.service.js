@@ -99,20 +99,31 @@ export async function publishSelectedRoute(body, userdata) {
     validatePayload(body);
 
     const driverId = String(userdata?.sub || userdata?.id || '');
+    const driverName = String(userdata?.name || '').trim();
+
     if (!driverId) {
         throw new AppError('Authenticated user ID is missing', 401);
+    }
+
+    if (!driverName) {
+        throw new AppError('Authenticated user name is missing', 400);
     }
 
     return saveSelectedDriverRoute(
         {
             driverId,
+            driverName,
+
             vehicleId: String(body.vehicleId),
+
             originName: String(body.origin.placeName),
             originLatitude: Number(body.origin.latitude),
             originLongitude: Number(body.origin.longitude),
+
             destinationName: String(body.destination.placeName),
             destinationLatitude: Number(body.destination.latitude),
             destinationLongitude: Number(body.destination.longitude),
+
             geometry: {
                 type: 'LineString',
                 coordinates: body.geometry.coordinates.map(point => [
@@ -120,16 +131,34 @@ export async function publishSelectedRoute(body, userdata) {
                     Number(point[1])
                 ])
             },
+
             distanceMeters: Number(body.distanceMeters),
             durationSeconds: Number(body.durationSeconds),
-            departureAt: departureTimestamp(body.departureDate, body.departureTime),
+
+            departureAt: departureTimestamp(
+                body.departureDate,
+                body.departureTime
+            ),
+
             availableSeats: Number(body.availableSeats),
             pricePerSeat: Number(body.pricePerSeat),
             currency: 'LKR',
-            intermediateStops: Array.isArray(body.intermediateStops) ? body.intermediateStops : [],
+
+            intermediateStops: Array.isArray(body.intermediateStops)
+                ? body.intermediateStops
+                : [],
+
             ridePreferences: body.ridePreferences || {},
-            maxPassengerWaitingMinutes: body.maxPassengerWaitingMinutes !== undefined ? Number(body.maxPassengerWaitingMinutes) : 5
+
+            maxPassengerWaitingMinutes:
+                body.maxPassengerWaitingMinutes !== undefined
+                    ? Number(body.maxPassengerWaitingMinutes)
+                    : 5,
+
+            noOfRequests: 0,
+            noOfBookings: 0
         },
+
         (savedRide) => ({
             eventId: randomUUID(),
             eventType: 'ride.published',

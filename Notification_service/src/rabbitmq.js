@@ -1,31 +1,86 @@
 
-import amqp from "amqplib";
-import { createNotification } from "./services/notificationService.js";
+import amqp from 'amqplib';
+import { createNotification } from './services/notificationService.js';
 
 const exchange =
-  process.env.RABBITMQ_EXCHANGE || "rideshare.events";
+  process.env.RABBITMQ_EXCHANGE || 'rideshare.events';
 
 const queue =
-  process.env.RABBITMQ_QUEUE || "notification.events";
+  process.env.RABBITMQ_QUEUE || 'notification.events';
 
-const routingPatterns = ["ride.*", "booking.*"];
+const routingPatterns = ['ride.*', 'booking.*'];
 
+// EXISTING VALIDATION - KEEP UNCHANGED
 function isValidEvent(event) {
+
   return (
     event &&
-    typeof event.eventId === "string" &&
-    typeof event.eventType === "string" &&
-    typeof event.recipientUserId === "string" &&
-    typeof event.title === "string" &&
-    typeof event.body === "string"
+    typeof event.eventId === 'string' &&
+    typeof event.eventType === 'string' &&
+    typeof event.recipientUserId === 'string' &&
+    typeof event.title === 'string'
   );
 }
 
+// ADDITIONAL VALIDATION FOR BOOKING.CREATED
+function isValidBookingEvent(event) {
+
+  return (
+    event &&
+    typeof event.eventId === 'string' &&
+    event.eventType === 'booking.created' &&
+    event.data &&
+    typeof event.data === 'object' &&
+    typeof event.data.bookingId === 'string' &&
+    typeof event.data.passengerId === 'string' &&
+    typeof event.data.recipientUserId === 'string' &&
+    typeof event.data.rideId === 'string' &&
+    typeof event.data.title === 'string'
+  );
+}
+
+// SELECT THE CORRECT VALIDATION
+function validateIncomingEvent(event) {
+  if (event?.eventType === 'booking.created') {
+    return isValidBookingEvent(event);
+  }
+
+  return isValidEvent(event);
+}
+
+// SELECT NOTIFICATION DATA BASED ON EVENT TYPE
+function getNotificationData(event) {
+  if (event.eventType === 'booking.created') {
+    return {
+      userId: event.data.recipientUserId,
+      type: event.eventType,
+      title: event.data.title,
+      body:
+        event.data.body ||
+        'You have received a new booking request.',
+      data: event.data,
+    };
+  }
+
+  return {
+    userId: event.recipientUserId,
+    type: event.eventType,
+    title: event.title,
+    body:
+      event.body ||
+      'You have received a new notification.',
+    data: event.data || {},
+  };
+}
+
 export async function startEventConsumer() {
-  const connection = await amqp.connect(process.env.RABBITMQ_URL);
+  const connection = await amqp.connect(
+    process.env.RABBITMQ_URL
+  );
+
   const channel = await connection.createChannel();
 
-  await channel.assertExchange(exchange, "topic", {
+  await channel.assertExchange(exchange, 'topic', {
     durable: true,
   });
 
@@ -45,66 +100,136 @@ export async function startEventConsumer() {
     async (message) => {
       if (!message) return;
 
+      console.log('\n====================================');
+      console.log('📩 MESSAGE RECEIVED FROM RABBITMQ');
+      console.log('====================================');
+
+      console.log(
+        'Routing Key:',
+        message.fields.routingKey
+      );
+
+      console.log(
+        'Raw Message:',
+        message.content.toString('utf8')
+      );
+
       let event;
 
-      // Parse and validate the incoming event.
+      // PARSE AND VALIDATE EVENT
       try {
-        event = JSON.parse(message.content.toString("utf8"));
+        event = JSON.parse(
+          message.content.toString('utf8')
+        );
 
-        if (!isValidEvent(event)) {
-          console.error("Invalid notification event:", event);
+        console.log('Parsed Event:', event);
+
+        if (!validateIncomingEvent(event)) {
+          console.error(
+            '❌ Invalid notification event:',
+            event
+          );
+
           channel.nack(message, false, false);
           return;
         }
       } catch (error) {
-        console.error("Invalid event JSON:", error.message);
+        console.error(
+          '❌ Invalid event JSON:',
+          error.message
+        );
+
         channel.nack(message, false, false);
         return;
       }
 
-      // Save the notification through the service layer.
+      // CREATE NOTIFICATION
       try {
+        const notificationData = getNotificationData(event);
+
+        if (
+          typeof notificationData.userId !== 'string' ||
+          !notificationData.userId.trim()
+        ) {
+          console.error(
+            '❌ Notification recipient is missing:',
+            event.eventType
+          );
+
+          channel.nack(message, false, false);
+          return;
+        }
+
         await createNotification({
           eventId: event.eventId,
-          userId: event.recipientUserId,
-          type: event.eventType,
-          title: event.title,
-          body: event.body,
-          data: event.data || {},
+          userId: notificationData.userId,
+          type: notificationData.type,
+          title: notificationData.title,
+          body: notificationData.body,
+          data: notificationData.data,
         });
 
         console.log(
-          "Notification saved:",
-          event.eventId,
-          "Routing key:",
+          '✅ Notification saved:',
+          event.eventId
+        );
+
+        console.log(
+          'Routing Key:',
           message.fields.routingKey
         );
 
+        // Acknowledge after successful processing.
         channel.ack(message);
+
+        console.log('✅ Message acknowledged');
+        console.log('====================================\n');
+
       } catch (error) {
         console.error(
-          "Could not save notification:",
+          '❌ Could not save notification:',
           error.message
         );
 
-        // Temporary retry behaviour. A dead-letter/retry
-        // queue should be configured before production use.
+        // Requeue the message for retry.
         channel.nack(message, false, true);
+
+        console.log('🔄 Message requeued');
+        console.log('====================================\n');
       }
     },
-    { noAck: false }
+    {
+      noAck: false,
+    }
   );
 
   console.log(
-    `Listening on exchange "${exchange}"`,
-    `with routing patterns: ${routingPatterns.join(", ")}`
+    `🚀 Notification Service listening on exchange "${exchange}"`
   );
 
-  connection.on("error", (error) => {
-    console.error("RabbitMQ connection error:", error.message);
+  console.log(
+    `📌 Routing patterns: ${routingPatterns.join(', ')}`
+  );
+
+  console.log(
+    `📦 Queue: ${queue}`
+  );
+
+  connection.on('error', (error) => {
+    console.error(
+      'RabbitMQ connection error:',
+      error.message
+    );
   });
 
-  channel.on("error", (error) => {
-    console.error("RabbitMQ channel error:", error.message);
+  connection.on('close', () => {
+    console.error('RabbitMQ connection closed');
+  });
+
+  channel.on('error', (error) => {
+    console.error(
+      'RabbitMQ channel error:',
+      error.message
+    );
   });
 }

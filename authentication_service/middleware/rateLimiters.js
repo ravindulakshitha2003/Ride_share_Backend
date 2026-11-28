@@ -25,3 +25,6 @@ export const verifySignupLimiter = makeLimiter(10);
 export const verifyEmailLimiter = makeLimiter(10);
 export const verifyResetLimiter = makeLimiter(10);
 export const resetPasswordLimiter = makeLimiter(10);
+
+// Google sign-in: 20 per 15 minutes per IP address.
+export const googleLimiter = makeLimiter(20);

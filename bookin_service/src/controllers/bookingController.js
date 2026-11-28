@@ -1,3 +1,6 @@
+
+import { randomUUID } from 'node:crypto';
+
 import { publishEvent } from '../config/rabbitmq.js';
 import { createBooking } from '../services/bookingService.js';
 import { createBookingSchema } from '../validators/bookingValidator.js';
@@ -17,7 +20,7 @@ export async function createBookingController(req, res, next) {
     
      
     const parsed = createBookingSchema.safeParse(req.body);
-   
+
     if (!parsed.success) {
       return res.status(400).json({
         success: false,
@@ -37,6 +40,21 @@ export async function createBookingController(req, res, next) {
       parsed.data
     );
 
+    // 2. Common booking information
+    const bookingData = {
+      bookingId: booking.booking_id,
+      passengerId: booking.passenger_id,
+      driverId: booking.driver_id,
+      rideId: booking.ride_id,
+      requestedSeats: booking.requested_seats,
+      note: booking.note,
+      status: booking.status,
+      createdAt: booking.created_at,
+    };
+
+    // 3. Prepare passenger notification
+    const passengerEvent = {
+      eventId: randomUUID(),
 
 
     
@@ -46,7 +64,21 @@ export async function createBookingController(req, res, next) {
       eventId: crypto.randomUUID(),
       eventType: 'booking.created',
       timestamp: new Date().toISOString(),
+      recipientUserId: String(booking.passenger_id),
+      title: 'Booking Request Submitted',
+      body: 'Your booking request has been submitted successfully. Waiting for the driver to respond.',
+      data: bookingData,
+    };
 
+    // 4. Prepare driver notification
+    const driverEvent = {
+      eventId: randomUUID(),
+      eventType: 'booking.created',
+      timestamp: new Date().toISOString(),
+      recipientUserId: String(booking.driver_id),
+      title: 'New Booking Request',
+      body: 'A passenger has requested to join your ride. Review the booking request.',
+      data: bookingData,
       data: {
         bookingId: booking.booking_id,
         passengerId: booking.passenger_id,
@@ -60,8 +92,13 @@ export async function createBookingController(req, res, next) {
       },
     };
 
-    // 3. Publish event to RabbitMQ
+    // 5. Publish passenger notification
     try {
+      await publishEvent('booking.created', passengerEvent);
+      console.log('Passenger booking notification published successfully');
+    } catch (error) {
+      console.error('Failed to publish passenger notification:', error.message);
+    }
      
       await publishEvent(
         'booking.created',
@@ -73,26 +110,23 @@ export async function createBookingController(req, res, next) {
         bookingCreatedEvent
       );
 
-      console.log(
-        'Booking created event published successfully'
-      );
-    } catch (rabbitMQError) {
-      // Booking is already saved in the database.
-      // Do not fail the booking request because of RabbitMQ.
-      console.error(
-        'Failed to publish booking event:',
-        rabbitMQError
-      );
+    // 6. Publish driver notification
+    try {
+      await publishEvent('booking.created', driverEvent);
+      console.log('Driver booking notification published successfully');
+    } catch (error) {
+      console.error('Failed to publish driver notification:', error.message);
     }
     
 
-    // 4. Return response to frontend
+    // 7. Return response
     return res.status(201).json({
       success: true,
       message: 'Booking request created successfully',
      data: {
         bookingId: booking.booking_id,
         passengerId: booking.passenger_id,
+        driverId: booking.driver_id,
         recipientUserId: booking.driverId,
         rideId: booking.ride_id,
         requestedSeats: booking.requested_seats,
@@ -102,6 +136,7 @@ export async function createBookingController(req, res, next) {
         title : "REQUEST"
       },
     });
+
   } catch (error) {
     next(error);
   }
